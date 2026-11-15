@@ -1,0 +1,405 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+
+const sb = createClient("https://ofzyqwpztohflxdhqgbb.supabase.co", "sb_publishable_x8nU8ype6b1KOL6K8lS2Iw_DDjz4Olr");
+const API = "https://systeem.boaportaal.nl/.netlify/functions/overleg";
+const app = document.getElementById("app");
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&" + "amp;", "<": "&" + "lt;", ">": "&" + "gt;", '"': "&" + "quot;", "'": "&" + "#39;" }[c]));
+
+const STEMS = [
+  ["akkoord", "✅ Gecontroleerd & akkoord"],
+  ["oppakken", "🛠️ Ik pak dit op"],
+  ["meekijken", "👀 Even meekijken"],
+  ["juridisch", "⚠️ Juridische aanpassing nodig"],
+];
+const STATUSSEN = [
+  ["aanwezig", "🟢 Aanwezig / beschikbaar voor overleg"],
+  ["redactie", "💻 Bezig met bouwen / redactie"],
+  ["dienst", "🎧 In servicedesk-dienst"],
+  ["straat", "🚓 Op straat / eigen dienst"],
+  ["afwezig", "⚫ Afwezig"],
+];
+const STIP = { aanwezig: "#15803d", redactie: "#1d4ed8", dienst: "#9a5b12", straat: "#b45309", afwezig: "#57534e" };
+
+let ik = null;
+let fout = "";
+let kanalen = [];
+let kanaal = "algemeen";
+let tab = "gesprekken";
+let onderwerpen = [];
+let berichten = [];
+let stempels = [];
+let taken = [];
+let openId = "";
+let concept = "";
+let titelConcept = "";
+let labelConcept = "TER CONTROLE";
+let paneel = "";
+let meedoen = false;
+let callVideo = true;
+let aanwezig = {};
+let bezig = false;
+let opnieuw = false;
+let live = null;
+let kamer = null;
+
+function tijd(waarde) {
+  return new Date(waarde).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+function rolVan(persoon) {
+  if (persoon.aanduiding) return persoon.aanduiding;
+  return persoon.rol === "beheerder" ? "Beheerder" : "Support";
+}
+
+function mensen() {
+  const lijst = [];
+  for (const groep of Object.values(aanwezig)) {
+    for (const persoon of groep) lijst.push(persoon);
+  }
+  const gezien = new Set();
+  return lijst.filter((persoon) => {
+    if (!persoon.client_id || gezien.has(persoon.client_id)) return false;
+    gezien.add(persoon.client_id);
+    return true;
+  });
+}
+
+async function api(body) {
+  const token = (await sb.auth.getSession()).data.session?.access_token || "";
+  const res = await fetch(API, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  const uit = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(uit.fout || "Het verzoek is niet gelukt.");
+  return uit;
+}
+
+function jitsi(room, video) {
+  const naam = encodeURIComponent(`"${ik.pv_naam}"`);
+  return `https://meet.jit.si/${encodeURIComponent(room)}#config.prejoinPageEnabled=false&config.startWithVideoMuted=${video ? "false" : "true"}&config.disableDeepLinking=true&userInfo.displayName=${naam}`;
+}
+
+function mensenHtmlLijst() {
+  const lijst = mensen();
+  return lijst.map((persoon) => `<article class="persoon"><div><span class="stip" style="background:${STIP[persoon.status] || STIP.aanwezig}"></span><b>${esc(persoon.pv_naam)}</b></div><small>[${esc(rolVan(persoon))}] · ${esc(persoon.client_id)}</small><br><small>${esc(persoon.email || "")}</small><div class="zacht">${esc(STATUSSEN.find(([id]) => id === persoon.status)?.[1] || "Aanwezig")}</div></article>`).join("") || `<p class="zacht">Nog niemand anders online.</p>`;
+}
+
+function mensenHtml() {
+  return `<h2 style="font-family:Georgia,serif;font-weight:500;font-size:22px;margin:4px 0 8px">Team</h2>
+    <label>Status<select id="status">${STATUSSEN.map(([id, label]) => `<option value="${id}" ${ik.status === id ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+    <label>Rol die collega's zien<input id="aanduiding" value="${esc(ik.aanduiding || "")}" placeholder="Vakredacteur Domein II"></label>
+    <div id="lijst">${mensenHtmlLijst()}</div>`;
+}
+
+function kaartHtml(kaart) {
+  if (!kaart) return "";
+  if (kaart.type === "ticket") {
+    return `<div class="ticketkaart"><b>${esc(kaart.nummer)}</b><div>${esc(kaart.status || "")}</div><div>Client-ID ${esc(kaart.client_id)} · ${esc(kaart.pv_naam)}</div></div>`;
+  }
+  if (kaart.type === "voorstel") {
+    const open = taken.some((rij) => rij.id === kaart.id && rij.status === "wacht");
+    return `<div class="voorstelkaart"><b>${esc(kaart.titel)}</b><div>${kaart.soort === "boom" ? "Beslisboom" : "Feitcode"} · ${esc(kaart.sleutel)}</div>${open && ik.rol === "beheerder" ? `<button class="primair" data-keur="${esc(kaart.id)}" type="button">Goedkeuren en op boaportaal.nl zetten</button>` : `<div class="zacht">${open ? "Wacht op de hoofdbeheerder." : "Al beoordeeld."}</div>`}</div>`;
+  }
+  return "";
+}
+
+function draadHtml(onderwerp) {
+  const reeks = berichten.filter((rij) => rij.onderwerp_id === onderwerp.id);
+  const open = openId === onderwerp.id;
+  const eerste = reeks[0];
+  return `<article class="draad ${open ? "" : "dicht"}" data-open="${esc(onderwerp.id)}">
+    <div class="rij"><span class="label">${esc(onderwerp.label || "OVERLEG")}</span><b>${esc(onderwerp.titel)}</b></div>
+    <small>${esc(onderwerp.maker_naam)} · ${esc(onderwerp.maker_id)} · ${tijd(onderwerp.created_at)} · ${reeks.length} ${reeks.length === 1 ? "bericht" : "berichten"}</small>
+    ${open ? reeks.map((bericht) => `<div class="bericht"><b>${esc(bericht.maker_naam)}</b> <small>${esc(bericht.maker_id)} · ${tijd(bericht.created_at)}</small><div>${esc(bericht.tekst)}</div>${kaartHtml(bericht.kaart)}<div class="rij" style="margin-top:6px">${STEMS.map(([code, label]) => {
+      const van = stempels.filter((stem) => stem.bericht_id === bericht.id && stem.stempel === code);
+      const eigen = van.some((stem) => stem.client_id === ik.client_id);
+      return `<button class="stem ${eigen ? "aan" : ""}" type="button" data-stem="${esc(bericht.id)}" data-code="${code}">${label}${van.length ? ` ${van.length}` : ""}</button>`;
+    }).join("")}</div></div>`).join("") + `<label style="margin-top:8px">Reageren<textarea data-reactie="${esc(onderwerp.id)}"></textarea></label><button class="primair" type="button" data-reageer="${esc(onderwerp.id)}">Reageren</button>` : eerste ? `<p>${esc(eerste.tekst)}</p>` : ""}
+  </article>`;
+}
+
+function teken() {
+  if (!ik) {
+    app.innerHTML = `<header class="balk"><div class="merk"><img src="/favicon.svg" alt=""><div><strong>BOA PORTAAL</strong><span>Overleg</span></div></div></header>
+      <main class="poort"><p style="letter-spacing:.14em;font-size:12px;color:#9a5b12;font-weight:700">ALLEEN VOOR MEDEWERKERS</p><h1>Overleg</h1><p class="sub">Hier stemt het team af. Een medewerker komt hier vanzelf in, met hetzelfde e-mailadres als op boaportaal.nl.</p>
+      <form id="in" class="kaart"><label>E-mailadres<input name="email" type="email" required autocomplete="username"></label><label>Wachtwoord<input name="password" type="password" required autocomplete="current-password"></label><button class="primair">Inloggen</button>${fout ? `<p class="fout">${esc(fout)}</p>` : ""}</form></main>`;
+    document.getElementById("in").onsubmit = aanmelden;
+    return;
+  }
+  if (!ik.medewerker) {
+    app.innerHTML = `<header class="balk"><div class="merk"><img src="/favicon.svg" alt=""><div><strong>BOA PORTAAL</strong><span>Overleg</span></div></div><button class="licht" id="uit" type="button">Afmelden</button></header>
+      <main class="poort"><h1>Geen toegang</h1><p class="sub">${esc(ik.pv_naam)} ${esc(ik.client_id)} is geen medewerker. Wie in systeem als medewerker staat, komt hier vanzelf in.</p></main>`;
+    document.getElementById("uit").onclick = afmelden;
+    return;
+  }
+  const huidig = kanalen.find((rij) => rij.id === kanaal) || { naam: "Overleg", omschrijving: "", call_room: "" };
+  const team = mensen();
+  const beschikbaar = team.filter((persoon) => persoon.status !== "afwezig").length;
+  const tickets = berichten.filter((rij) => rij.kaart?.type === "ticket");
+  app.innerHTML = `<header class="balk"><div class="merk"><img src="/favicon.svg" alt=""><div><strong>BOA PORTAAL</strong><span>Overleg</span></div></div><div class="rij"><a href="https://boaportaal.nl">Portaal</a><button class="licht" id="uit" type="button">Afmelden ${esc(ik.client_id)}</button></div></header>
+    <div class="werk">
+      <aside class="kolom kanalen"><p class="zacht">Kanalen</p>${kanalen.map((rij) => `<button class="kanaal ${rij.id === kanaal ? "aan" : ""}" type="button" data-kanaal="${esc(rij.id)}"><b>${esc(rij.naam)}</b><small style="display:block">${esc(rij.omschrijving)}</small></button>`).join("")}</aside>
+      <section class="midden">
+        <div class="kop"><div class="koprij"><div><h2>${esc(huidig.naam)}</h2><p class="sub" style="margin:4px 0 0">${esc(huidig.omschrijving)}</p><span id="online">${beschikbaar} beschikbaar</span></div>
+          <div class="rij"><button class="sec" id="audio" type="button">Start team-call (audio)</button><button class="primair" id="video" type="button">Start video-meeting en schermdelen</button></div></div></div>
+        <div class="tabs"><button class="${tab === "gesprekken" ? "aan" : ""}" data-tab="gesprekken" type="button">Gesprekken</button><button class="${tab === "taken" ? "aan" : ""}" data-tab="taken" type="button">Taken en goedkeuringen</button><button class="${tab === "tickets" ? "aan" : ""}" data-tab="tickets" type="button">Gekoppelde servicedesk-tickets</button></div>
+        ${huidig.call_room && !meedoen ? `<div class="call"><span>Vergadering bezig in dit kanaal${huidig.call_door ? ` · gestart door ${esc(huidig.call_door)}` : ""}</span><span class="rij"><button id="mee" type="button">Nu deelnemen</button><button id="sluit" type="button">Voor iedereen sluiten</button></span></div>` : ""}
+        ${meedoen && huidig.call_room ? `<iframe class="beeld" title="Vergadering" allow="camera; microphone; fullscreen; display-capture" src="${esc(jitsi(huidig.call_room, callVideo))}"></iframe><div class="rij" style="padding:8px 16px"><button class="sec" id="weg" type="button">Verlaten</button><button class="sec" id="sluit" type="button">Voor iedereen sluiten</button><span class="zacht">Schermdelen zit in de vergadering. De chat hiernaast blijft van ons.</span></div>` : ""}
+        <div class="stroom">${fout ? `<p class="fout">${esc(fout)}</p>` : ""}${inhoud(tickets)}</div>
+        ${tab === "gesprekken" ? composer() : ""}
+      </section>
+      <aside class="kolom mensen" id="mensen">${mensenHtml()}</aside>
+    </div>`;
+  bind();
+}
+
+function inhoud(tickets) {
+  if (tab === "taken") {
+    return taken.length ? taken.map((rij) => `<article class="draad"><span class="label">TER CONTROLE</span> <b>${esc(rij.titel)}</b><p>${rij.soort === "boom" ? "Beslisboom" : "Feitcode"} · ${esc(rij.sleutel)} · voorgelegd door ${esc(rij.indiener)}</p>${ik.rol === "beheerder" ? `<button class="primair" data-keur="${esc(rij.id)}" type="button">Goedkeuren en op boaportaal.nl zetten</button>` : `<p class="zacht">Wacht op de hoofdbeheerder.</p>`}</article>`).join("") : `<p class="zacht">Er ligt niets ter goedkeuring.</p>`;
+  }
+  if (tab === "tickets") {
+    return tickets.length ? tickets.map((rij) => `<article class="draad"><b>${esc(rij.kaart.nummer)}</b>${kaartHtml(rij.kaart)}<small>Gekoppeld door ${esc(rij.maker_naam)}</small></article>`).join("") : `<p class="zacht">Nog geen ticket gekoppeld in dit kanaal.</p>`;
+  }
+  return onderwerpen.map(draadHtml).join("") || `<p class="zacht">Nog geen gesprek. Begin onderaan een onderwerp.</p>`;
+}
+
+function composer() {
+  return `<form class="composer" id="nieuw">
+    ${paneel === "ticket" ? `<label>Ticketnummer<input id="ticketnr" placeholder="M2611-0412"></label><button class="sec" id="zoek-ticket" type="button">Zoek het ticket</button><div id="treffers"></div>` : ""}
+    ${paneel === "voorstel" ? `<div class="rij"><label>Soort<select id="soort"><option value="feit">Feitcode</option><option value="boom">Beslisboom</option></select></label><label>Code of id<input id="sleutel" placeholder="D 517 of sfeer"></label></div><label>Titel<input id="voorstel-titel"></label><label>Artikel, alleen bij een feitcode<input id="artikel"></label><label>Tekst die op de site mag<textarea id="voorstel-tekst"></textarea></label><button class="primair" id="leg-voor" type="button">Voorleggen aan de hoofdbeheerder</button>` : ""}
+    <div class="rij"><label>Label<select id="label">${["TER CONTROLE", "TICKET", "VRAAG", "AFSPRAAK"].map((label) => `<option ${labelConcept === label ? "selected" : ""}>${label}</option>`).join("")}</select></label><label>Onderwerp<input id="titel" value="${esc(titelConcept)}" placeholder="Korte titel"></label></div>
+    <label>Bericht<textarea id="tekst">${esc(concept)}</textarea></label>
+    <div class="rij"><button class="primair">Onderwerp plaatsen</button><button class="sec" id="koppel" type="button">Koppel servicedesk-ticket</button><button class="sec" id="stel-voor" type="button">Nieuwe feitcode of beslisboom voorstellen</button></div>
+  </form>`;
+}
+
+function bind() {
+  document.getElementById("uit").onclick = afmelden;
+  document.querySelectorAll("[data-kanaal]").forEach((knop) => knop.onclick = () => { kanaal = knop.dataset.kanaal; openId = ""; meedoen = false; tab = "gesprekken"; laad(); });
+  document.querySelectorAll("[data-tab]").forEach((knop) => knop.onclick = () => { tab = knop.dataset.tab; teken(); });
+  document.querySelectorAll("[data-open]").forEach((kaart) => kaart.onclick = (event) => {
+    if (event.target.closest("button, textarea, input, a")) return;
+    openId = openId === kaart.dataset.open ? "" : kaart.dataset.open;
+    teken();
+  });
+  document.getElementById("nieuw")?.addEventListener("submit", plaats);
+  document.getElementById("tekst")?.addEventListener("input", (event) => { concept = event.target.value; });
+  document.getElementById("titel")?.addEventListener("input", (event) => { titelConcept = event.target.value; });
+  document.getElementById("label")?.addEventListener("change", (event) => { labelConcept = event.target.value; });
+  document.getElementById("koppel")?.addEventListener("click", () => { paneel = paneel === "ticket" ? "" : "ticket"; teken(); });
+  document.getElementById("stel-voor")?.addEventListener("click", () => { paneel = paneel === "voorstel" ? "" : "voorstel"; teken(); });
+  document.getElementById("zoek-ticket")?.addEventListener("click", zoekTicket);
+  document.getElementById("leg-voor")?.addEventListener("click", legVoor);
+  document.getElementById("audio")?.addEventListener("click", () => startCall(false));
+  document.getElementById("video")?.addEventListener("click", () => startCall(true));
+  document.getElementById("mee")?.addEventListener("click", () => { callVideo = true; meedoen = true; teken(); });
+  document.getElementById("weg")?.addEventListener("click", () => { meedoen = false; teken(); });
+  document.getElementById("sluit")?.addEventListener("click", sluitCall);
+  document.querySelectorAll("[data-reageer]").forEach((knop) => knop.onclick = () => reageer(knop.dataset.reageer));
+  document.querySelectorAll("[data-stem]").forEach((knop) => knop.onclick = () => stempel(knop.dataset.stem, knop.dataset.code));
+  document.querySelectorAll("[data-keur]").forEach((knop) => knop.onclick = () => keur(knop.dataset.keur));
+  document.getElementById("status")?.addEventListener("change", bewaarStatus);
+  document.getElementById("aanduiding")?.addEventListener("change", bewaarStatus);
+}
+
+async function aanmelden(event) {
+  event.preventDefault();
+  fout = "";
+  const f = new FormData(event.target);
+  const { error } = await sb.auth.signInWithPassword({ email: String(f.get("email") || "").trim(), password: String(f.get("password") || "") });
+  if (error) { fout = "Aanmelden lukt niet."; teken(); return; }
+  await start();
+}
+
+async function afmelden() {
+  await sb.auth.signOut();
+  ik = null;
+  location.reload();
+}
+
+async function start() {
+  const { data } = await sb.auth.getSession();
+  const user = data.session?.user;
+  if (!user) { ik = null; teken(); return; }
+  const { data: med } = await sb.from("boa_medewerker").select("client_id, pv_naam, rol, actief").eq("user_id", user.id).maybeSingle();
+  ik = { email: user.email || "", client_id: med?.client_id || "", pv_naam: med?.pv_naam || "", rol: med?.rol || "", medewerker: Boolean(med?.actief), status: "aanwezig", aanduiding: "" };
+  if (!ik.medewerker) { teken(); return; }
+  const { data: status } = await sb.from("boa_overleg_status").select("status, aanduiding").eq("client_id", ik.client_id).maybeSingle();
+  if (status) { ik.status = status.status; ik.aanduiding = status.aanduiding || ""; }
+  await laadKanalen();
+  await laad();
+  if (!live) {
+    live = sb.channel("overleg-data")
+      .on("postgres_changes", { event: "*", schema: "public", table: "boa_onderwerp" }, () => laad())
+      .on("postgres_changes", { event: "*", schema: "public", table: "boa_bericht" }, () => laad())
+      .on("postgres_changes", { event: "*", schema: "public", table: "boa_stempel" }, () => laad())
+      .on("postgres_changes", { event: "*", schema: "public", table: "boa_kanaal" }, () => laadKanalen())
+      .subscribe();
+    kamer = sb.channel("overleg-aanwezig");
+    kamer.on("presence", { event: "sync" }, () => {
+      aanwezig = kamer.presenceState();
+      const lijst = document.getElementById("lijst");
+      const teller = document.getElementById("online");
+      if (lijst) lijst.innerHTML = mensenHtmlLijst();
+      if (teller) teller.textContent = `${mensen().filter((persoon) => persoon.status !== "afwezig").length} beschikbaar`;
+    });
+    kamer.subscribe(async (staat) => { if (staat === "SUBSCRIBED") await kamer.track(spoor()); });
+  }
+}
+
+function spoor() {
+  return { client_id: ik.client_id, pv_naam: ik.pv_naam, rol: ik.rol, email: ik.email, status: ik.status, aanduiding: ik.aanduiding };
+}
+
+async function bewaarStatus() {
+  ik.status = document.getElementById("status").value;
+  ik.aanduiding = document.getElementById("aanduiding").value.slice(0, 80);
+  await sb.from("boa_overleg_status").upsert({ client_id: ik.client_id, status: ik.status, aanduiding: ik.aanduiding });
+  if (kamer) await kamer.track(spoor());
+}
+
+async function laadKanalen() {
+  const { data, error } = await sb.from("boa_kanaal").select("*").order("volgorde");
+  if (error) { fout = "Draai schema-0015.sql in Supabase. Daarna verversen."; teken(); return; }
+  kanalen = data || [];
+  if (!kanalen.some((rij) => rij.id === kanaal) && kanalen[0]) kanaal = kanalen[0].id;
+  if (!kanalen.find((rij) => rij.id === kanaal)?.call_room) meedoen = false;
+  teken();
+}
+
+async function laad() {
+  if (bezig) { opnieuw = true; return; }
+  bezig = true;
+  const { data: onder, error } = await sb.from("boa_onderwerp").select("*").eq("kanaal_id", kanaal).order("created_at", { ascending: false }).limit(80);
+  if (error) { fout = "Draai schema-0015.sql in Supabase. Daarna verversen."; bezig = false; teken(); return; }
+  onderwerpen = onder || [];
+  const ids = onderwerpen.map((rij) => rij.id);
+  berichten = [];
+  stempels = [];
+  if (ids.length) {
+    const berichtenUit = await sb.from("boa_bericht").select("*").in("onderwerp_id", ids).order("created_at");
+    berichten = berichtenUit.data || [];
+    const berichtIds = berichten.map((rij) => rij.id);
+    if (berichtIds.length) {
+      const stemUit = await sb.from("boa_stempel").select("*").in("bericht_id", berichtIds);
+      stempels = stemUit.data || [];
+    }
+  }
+  try { taken = (await api({ actie: "taken" })).taken || []; } catch { taken = []; }
+  fout = "";
+  bezig = false;
+  teken();
+  if (opnieuw) { opnieuw = false; await laad(); }
+}
+
+async function plaats(event) {
+  event.preventDefault();
+  fout = "";
+  const titel = titelConcept.trim();
+  const tekst = concept.trim();
+  if (!titel || !tekst) { fout = "Vul een titel en een bericht in."; teken(); return; }
+  const gemaakt = await sb.from("boa_onderwerp").insert({ kanaal_id: kanaal, titel, label: labelConcept, maker_id: ik.client_id, maker_naam: ik.pv_naam }).select("id").single();
+  if (gemaakt.error || !gemaakt.data) { fout = "Het onderwerp is niet geplaatst."; teken(); return; }
+  await sb.from("boa_bericht").insert({ onderwerp_id: gemaakt.data.id, maker_id: ik.client_id, maker_naam: ik.pv_naam, tekst });
+  concept = "";
+  titelConcept = "";
+  await laad();
+}
+
+async function reageer(id) {
+  const veld = document.querySelector(`[data-reactie="${id}"]`);
+  const tekst = veld?.value.trim() || "";
+  if (!tekst) return;
+  await sb.from("boa_bericht").insert({ onderwerp_id: id, maker_id: ik.client_id, maker_naam: ik.pv_naam, tekst });
+  await laad();
+}
+
+async function stempel(berichtId, code) {
+  const eigen = stempels.some((stem) => stem.bericht_id === berichtId && stem.client_id === ik.client_id && stem.stempel === code);
+  if (eigen) await sb.from("boa_stempel").delete().match({ bericht_id: berichtId, client_id: ik.client_id, stempel: code });
+  else await sb.from("boa_stempel").insert({ bericht_id: berichtId, client_id: ik.client_id, pv_naam: ik.pv_naam, stempel: code });
+  await laad();
+}
+
+async function zoekTicket() {
+  fout = "";
+  try {
+    const uit = await api({ actie: "ticket", nummer: document.getElementById("ticketnr").value });
+    const vak = document.getElementById("treffers");
+    vak.innerHTML = uit.tickets.length ? uit.tickets.map((rij) => `<button class="sec" type="button" data-ticket="${esc(rij.nummer)}" data-cid="${esc(rij.client_id)}" data-naam="${esc(rij.pv_naam)}" data-staat="${esc(rij.status)}">${esc(rij.nummer)} · ${esc(rij.client_id)}</button>`).join("") : `<p class="zacht">Geen ticket met dat nummer.</p>`;
+    vak.querySelectorAll("[data-ticket]").forEach((knop) => knop.onclick = () => koppelTicket(knop.dataset));
+  } catch (err) { fout = err.message; teken(); }
+}
+
+async function koppelTicket(rij) {
+  const titel = `Ticket ${rij.ticket}`;
+  const gemaakt = await sb.from("boa_onderwerp").insert({ kanaal_id: kanaal, titel, label: "TICKET", maker_id: ik.client_id, maker_naam: ik.pv_naam }).select("id").single();
+  if (gemaakt.error) { fout = "Het ticket is niet gekoppeld."; teken(); return; }
+  await sb.from("boa_bericht").insert({
+    onderwerp_id: gemaakt.data.id,
+    maker_id: ik.client_id,
+    maker_naam: ik.pv_naam,
+    tekst: "Ticket gekoppeld om er samen naar te kijken.",
+    kaart: { type: "ticket", nummer: rij.ticket, client_id: rij.cid, pv_naam: rij.naam, status: rij.staat },
+  });
+  paneel = "";
+  await laad();
+}
+
+async function legVoor() {
+  fout = "";
+  try {
+    const uit = await api({
+      actie: "voorstel",
+      soort: document.getElementById("soort").value,
+      sleutel: document.getElementById("sleutel").value,
+      titel: document.getElementById("voorstel-titel").value,
+      artikel: document.getElementById("artikel").value,
+      tekst: document.getElementById("voorstel-tekst").value,
+    });
+    const voorstel = uit.voorstel;
+    const gemaakt = await sb.from("boa_onderwerp").insert({ kanaal_id: kanaal, titel: voorstel.titel, label: "TER CONTROLE", maker_id: ik.client_id, maker_naam: ik.pv_naam }).select("id").single();
+    if (!gemaakt.error) {
+      await sb.from("boa_bericht").insert({
+        onderwerp_id: gemaakt.data.id,
+        maker_id: ik.client_id,
+        maker_naam: ik.pv_naam,
+        tekst: "Voorgelegd vanuit het overleg. De site toont het pas na goedkeuring.",
+        kaart: { type: "voorstel", id: voorstel.id, soort: voorstel.soort, sleutel: voorstel.sleutel, titel: voorstel.titel },
+      });
+    }
+    paneel = "";
+    await laad();
+  } catch (err) { fout = err.message; teken(); }
+}
+
+async function keur(id) {
+  fout = "";
+  try {
+    await api({ actie: "keur", id });
+    const bericht = berichten.find((rij) => rij.kaart?.id === id);
+    if (bericht) await sb.from("boa_bericht").insert({ onderwerp_id: bericht.onderwerp_id, maker_id: ik.client_id, maker_naam: ik.pv_naam, tekst: "Goedgekeurd en op boaportaal.nl gezet." });
+    await laad();
+  } catch (err) { fout = err.message; teken(); }
+}
+
+async function startCall(video) {
+  const huidig = kanalen.find((rij) => rij.id === kanaal);
+  let room = huidig?.call_room || "";
+  if (!room) {
+    room = `boa${kanaal}${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    const { error } = await sb.rpc("boa_overleg_call", { p_kanaal: kanaal, p_room: room });
+    if (error) { fout = "De vergadering start niet. Draai schema-0015.sql."; teken(); return; }
+  }
+  callVideo = video;
+  meedoen = true;
+  await laadKanalen();
+}
+
+async function sluitCall() {
+  await sb.rpc("boa_overleg_call", { p_kanaal: kanaal, p_room: "" });
+  meedoen = false;
+  await laadKanalen();
+}
+
+const sessie = await sb.auth.getSession();
+if (sessie.data.session) await start();
+else teken();
