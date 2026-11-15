@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { startGesprek, stopGesprek } from "./gesprek.js";
 
 const sb = createClient("https://ofzyqwpztohflxdhqgbb.supabase.co", "sb_publishable_x8nU8ype6b1KOL6K8lS2Iw_DDjz4Olr");
 const API = "https://systeem.boaportaal.nl/.netlify/functions/overleg";
@@ -94,11 +95,6 @@ async function api(body) {
   const uit = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(uit.fout || "Het verzoek is niet gelukt.");
   return uit;
-}
-
-function jitsi(room, video) {
-  const naam = encodeURIComponent(`"${publiekeNaam()}"`);
-  return `https://jitsi.member.fsf.org/${encodeURIComponent(room)}#config.prejoinPageEnabled=false&config.requireDisplayName=false&config.startWithVideoMuted=${video ? "false" : "true"}&config.disableDeepLinking=true&userInfo.displayName=${naam}`;
 }
 
 function mensenHtmlLijst() {
@@ -197,7 +193,7 @@ function teken() {
           ${dmNu ? "" : `<div class="rij"><button class="sec" id="audio" type="button">Start team-call (audio)</button><button class="primair" id="video" type="button">Start video-meeting en schermdelen</button></div>`}</div></div>
         ${dmNu ? "" : `<div class="tabs"><button class="${tab === "gesprekken" ? "aan" : ""}" data-tab="gesprekken" type="button">Gesprekken</button><button class="${tab === "taken" ? "aan" : ""}" data-tab="taken" type="button">Taken en goedkeuringen</button><button class="${tab === "tickets" ? "aan" : ""}" data-tab="tickets" type="button">Gekoppelde servicedesk-tickets</button></div>`}
         ${!dmNu && huidig.call_room && !meedoen ? `<div class="call"><span>Vergadering bezig in dit kanaal${huidig.call_door ? ` · gestart door ${esc(huidig.call_door)}` : ""}</span><span class="rij"><button id="mee" type="button">Nu deelnemen</button><button id="sluit" type="button">Voor iedereen sluiten</button></span></div>` : ""}
-        ${!dmNu && meedoen && huidig.call_room ? `<div class="hostbalk"><button class="sec" id="weg" type="button">Verlaten</button><button class="sec" id="sluit" type="button">Voor iedereen sluiten</button><button class="primair" id="deel" type="button">Kopieer link voor de klant</button><span class="zacht">Geen tweede login. Jij bent meteen de host. De klant wacht tot jij deze vergadering hebt gestart.</span></div><iframe class="beeld" title="Vergadering" allow="camera *; microphone *; fullscreen *; display-capture *; autoplay *" allowfullscreen src="${esc(jitsi(huidig.call_room, callVideo))}"></iframe>` : ""}
+        ${!dmNu && meedoen && huidig.call_room ? `<div class="hostbalk"><button class="sec" id="weg" type="button">Verlaten</button><button class="sec" id="sluit" type="button">Voor iedereen sluiten</button><button class="primair" id="deel" type="button">Kopieer link voor de klant</button><span class="zacht">Eigen vergadering. Jij bent meteen binnen. De klant wacht tot jij gestart bent.</span></div><div id="gesprek"></div>` : ""}
         <div class="stroom">${fout ? `<p class="fout">${esc(fout)}</p>` : ""}${inhoud()}</div>
         ${dmNu ? `<form class="composer" id="dm-form"><label>Bericht<textarea id="dm-tekst">${esc(conceptDm)}</textarea></label><button class="primair">Versturen</button></form>` : tab === "gesprekken" ? composer() : ""}
       </section>
@@ -275,11 +271,17 @@ function bind() {
   document.getElementById("audio")?.addEventListener("click", () => startCall(false));
   document.getElementById("video")?.addEventListener("click", () => startCall(true));
   document.getElementById("mee")?.addEventListener("click", () => { callVideo = true; meedoen = true; teken(); });
-  document.getElementById("weg")?.addEventListener("click", () => { meedoen = false; teken(); });
+  document.getElementById("weg")?.addEventListener("click", () => { stopGesprek(); meedoen = false; teken(); });
   document.getElementById("sluit")?.addEventListener("click", sluitCall);
   document.getElementById("deel")?.addEventListener("click", deelKlant);
   document.getElementById("status")?.addEventListener("change", bewaarStatus);
   document.getElementById("aanduiding")?.addEventListener("change", bewaarStatus);
+  const vak = document.getElementById("gesprek");
+  if (vak && !vak.dataset.aan) {
+    vak.dataset.aan = "1";
+    const huidig = kanalen.find((rij) => rij.id === kanaal);
+    if (huidig?.call_room) startGesprek(vak, { room: huidig.call_room, naam: publiekeNaam(), video: callVideo });
+  }
   bindLicht();
 }
 
@@ -553,6 +555,7 @@ async function deelKlant() {
 }
 
 async function sluitCall() {
+  stopGesprek();
   await sb.rpc("boa_overleg_call", { p_kanaal: kanaal, p_room: "" });
   meedoen = false;
   await laadKanalen();
