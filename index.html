@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Overleg | BOA Portaal</title>
-  <script>try{if(localStorage.getItem("overleg-night")==="1")document.documentElement.classList.add("night");}catch(e){}</script>
+  <script>try{var k=localStorage.getItem("overleg-night");if(k==="1"||(k===null&&matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.classList.add("night");}catch(e){}</script>
   <meta name="robots" content="noindex">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
@@ -18,7 +18,8 @@
     @font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
     @font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
     :root { --paper:#f8fafc; --panel:#fff; --ink:#0f172a; --muted:#475569; --line:#e2e8f0; --inset:#f1f5f9; --amber:#d97706; --ok:#059669; --stop:#b91c1c; --accent:#1d4ed8; --brand:#1e293b; }
-    html.night { --paper:#0b1320; --panel:#131f31; --ink:#e7eef5; --muted:#a9b8c6; --line:#26354d; --inset:#0e1826; }
+    html { color-scheme: light; }
+    html.night { color-scheme: dark; --paper:#0b1320; --panel:#131f31; --ink:#e7eef5; --muted:#a9b8c6; --line:#26354d; --inset:#0e1826; --amber:#fbbf24; }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
     body { margin: 0; background: var(--paper); color: var(--ink); font-family: "Plus Jakarta Sans", "Segoe UI", sans-serif; line-height: 1.5; }
@@ -66,6 +67,8 @@
     .tabs button.aan { color: var(--ink); border-color: var(--ink); }
     .call { margin: 8px 16px 0; background: var(--brand); color: #fff; border-radius: 2px; padding: 10px 12px; display: flex; justify-content: space-between; gap: 8px; align-items: center; }
     .call button { background: #fff; color: var(--brand); border: 0; border-radius: 2px; padding: 8px 12px; font-weight: 650; }
+    html.night .call button { background: var(--accent); color: #fff; }
+    html.night .kaart, html.night .draad, html.night .persoon { box-shadow: none; }
     .beeld { margin: 8px 16px 0; height: 420px; border: 0; width: calc(100% - 32px); border-radius: 2px; background: #111; }
     .stroom { flex: 1; overflow: auto; padding: 12px 16px; background: var(--paper); }
     .draad { padding: 12px; margin-bottom: 10px; }

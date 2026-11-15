@@ -118,16 +118,18 @@ function draadHtml(onderwerp) {
 
 function teken() {
   if (!ik) {
-    app.innerHTML = `<header class="balk"><a class="merk" href="https://boaportaal.nl"><img src="/boa-mark.png" alt=""><span>BOA Portaal</span></a><span class="hier">Overleg</span></header>
+    app.innerHTML = `<header class="balk"><a class="merk" href="https://boaportaal.nl"><img src="/boa-mark.png" alt=""><span>BOA Portaal</span></a><span class="hier">Overleg</span><div class="spatie"><button class="licht" id="nacht" type="button">${document.documentElement.classList.contains("night") ? "Dag" : "Nachtdienst"}</button></div></header>
       <main class="poort"><p class="kicker">ALLEEN VOOR MEDEWERKERS</p><h1>Overleg</h1><p class="sub">Hier stemt het team af. Een medewerker komt hier vanzelf in, met hetzelfde e-mailadres als op boaportaal.nl.</p>
       <form id="in" class="kaart"><label>E-mailadres<input name="email" type="email" required autocomplete="username"></label><label>Wachtwoord<input name="password" type="password" required autocomplete="current-password"></label><button class="primair">Inloggen</button>${fout ? `<p class="fout">${esc(fout)}</p>` : ""}</form></main>`;
     document.getElementById("in").onsubmit = aanmelden;
+    document.getElementById("nacht").onclick = wisselNacht;
     return;
   }
   if (!ik.medewerker) {
-    app.innerHTML = `<header class="balk"><a class="merk" href="https://boaportaal.nl"><img src="/boa-mark.png" alt=""><span>BOA Portaal</span></a><span class="hier">Overleg</span><div class="spatie"><button class="licht" id="uit" type="button">Afmelden</button></div></header>
+    app.innerHTML = `<header class="balk"><a class="merk" href="https://boaportaal.nl"><img src="/boa-mark.png" alt=""><span>BOA Portaal</span></a><span class="hier">Overleg</span><div class="spatie"><button class="licht" id="nacht" type="button">${document.documentElement.classList.contains("night") ? "Dag" : "Nachtdienst"}</button><button class="licht" id="uit" type="button">Afmelden</button></div></header>
       <main class="poort"><h1>Geen toegang</h1><p class="sub">${esc(ik.email)} is geen medewerker. Log in met het adres dat in systeem bij Accounts staat, niet met een ander adres van dezelfde persoon.</p></main>`;
     document.getElementById("uit").onclick = afmelden;
+    document.getElementById("nacht").onclick = wisselNacht;
     return;
   }
   const huidig = kanalen.find((rij) => rij.id === kanaal) || { naam: "Overleg", omschrijving: "", call_room: "" };
@@ -171,14 +173,16 @@ function composer() {
   </form>`;
 }
 
+function wisselNacht() {
+  const aan = !document.documentElement.classList.contains("night");
+  document.documentElement.classList.toggle("night", aan);
+  localStorage.setItem("overleg-night", aan ? "1" : "0");
+  teken();
+}
+
 function bind() {
   document.getElementById("uit").onclick = afmelden;
-  document.getElementById("nacht")?.addEventListener("click", () => {
-    const aan = !document.documentElement.classList.contains("night");
-    document.documentElement.classList.toggle("night", aan);
-    localStorage.setItem("overleg-night", aan ? "1" : "0");
-    teken();
-  });
+  document.getElementById("nacht")?.addEventListener("click", wisselNacht);
   document.querySelectorAll("[data-kanaal]").forEach((knop) => knop.onclick = () => { kanaal = knop.dataset.kanaal; openId = ""; meedoen = false; tab = "gesprekken"; laad(); });
   document.querySelectorAll("[data-tab]").forEach((knop) => knop.onclick = () => { tab = knop.dataset.tab; teken(); });
   document.querySelectorAll("[data-open]").forEach((kaart) => kaart.onclick = (event) => {
