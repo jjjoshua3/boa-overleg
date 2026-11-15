@@ -126,7 +126,7 @@ function teken() {
   }
   if (!ik.medewerker) {
     app.innerHTML = `<header class="balk"><a class="merk" href="https://boaportaal.nl"><img src="/boa-mark.png" alt=""><span>BOA Portaal</span></a><span class="hier">Overleg</span><div class="spatie"><button class="licht" id="uit" type="button">Afmelden</button></div></header>
-      <main class="poort"><h1>Geen toegang</h1><p class="sub">${esc(ik.pv_naam)} ${esc(ik.client_id)} is geen medewerker. Wie in systeem als medewerker staat, komt hier vanzelf in.</p></main>`;
+      <main class="poort"><h1>Geen toegang</h1><p class="sub">${esc(ik.email)} is geen medewerker. Log in met het adres dat in systeem bij Accounts staat, niet met een ander adres van dezelfde persoon.</p></main>`;
     document.getElementById("uit").onclick = afmelden;
     return;
   }
@@ -225,8 +225,16 @@ async function start() {
   const { data } = await sb.auth.getSession();
   const user = data.session?.user;
   if (!user) { ik = null; teken(); return; }
-  const { data: med } = await sb.from("boa_medewerker").select("client_id, pv_naam, rol, actief").eq("user_id", user.id).maybeSingle();
-  ik = { email: user.email || "", client_id: med?.client_id || "", pv_naam: med?.pv_naam || "", rol: med?.rol || "", medewerker: Boolean(med?.actief), status: "aanwezig", aanduiding: "" };
+  const { data: profiel } = await sb.rpc("boa_ik");
+  ik = {
+    email: user.email || "",
+    client_id: profiel?.client_id || "",
+    pv_naam: profiel?.pv_naam || "",
+    rol: profiel?.rol || "",
+    medewerker: Boolean(profiel?.medewerker),
+    status: "aanwezig",
+    aanduiding: "",
+  };
   if (!ik.medewerker) { teken(); return; }
   const { data: status } = await sb.from("boa_overleg_status").select("status, aanduiding").eq("client_id", ik.client_id).maybeSingle();
   if (status) { ik.status = status.status; ik.aanduiding = status.aanduiding || ""; }
