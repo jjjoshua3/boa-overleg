@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vergadering | BOA Portaal</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="/favicon-32.png" sizes="32x32">
+  <style>
+    @font-face { font-family: "Plus Jakarta Sans"; src: url("/fonts/plus-jakarta-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+    @font-face { font-family: "Plus Jakarta Sans"; src: url("/fonts/plus-jakarta-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+    :root { --paper:#0b1320; --panel:#131f31; --ink:#e7eef5; --muted:#a9b8c6; --line:#26354d; --accent:#1d4ed8; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; background: var(--paper); color: var(--ink); font-family: "Plus Jakarta Sans", "Segoe UI", sans-serif; }
+    body { display: grid; place-items: center; }
+    .kaart { width: min(460px, calc(100% - 32px)); background: var(--panel); border: 1px solid var(--line); border-radius: 2px; padding: 20px; }
+    h1 { font-size: 28px; letter-spacing: -0.03em; margin: 0 0 8px; }
+    p { color: var(--muted); line-height: 1.5; }
+    label { display: grid; gap: 4px; font-weight: 650; margin-top: 12px; }
+    input { background: var(--paper); color: var(--ink); border: 1px solid var(--line); border-radius: 2px; min-height: 44px; padding: 8px 10px; font: inherit; }
+    iframe { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; background: #111; }
+  </style>
+</head>
+<body>
+  <main class="kaart" id="wacht">
+    <p style="letter-spacing:.08em;font-size:12px;font-weight:700;color:#fbbf24;margin:0 0 6px">BOA PORTAAL</p>
+    <h1>De host is er nog niet.</h1>
+    <p>Je hoeft nergens in te loggen. Zodra de vergadering open is, kom je vanzelf binnen. Zet hieronder hoe je genoemd wilt worden.</p>
+    <label>Je naam<input id="naam" maxlength="60" placeholder="Voornaam"></label>
+  </main>
+  <script>
+    const room = new URLSearchParams(location.search).get("room") || "";
+    const vak = document.getElementById("wacht");
+    const naamveld = document.getElementById("naam");
+    if (!/^boa[a-z0-9]{10,48}$/.test(room)) {
+      vak.innerHTML = "<h1>Deze link klopt niet.</h1><p>Vraag een nieuwe link aan de host.</p>";
+    } else {
+      naamveld.value = localStorage.getItem("overleg-gastnaam") || "";
+      naamveld.addEventListener("change", () => localStorage.setItem("overleg-gastnaam", naamveld.value.trim()));
+      const timer = setInterval(async () => {
+        try {
+          const res = await fetch("https://systeem.boaportaal.nl/.netlify/functions/wacht", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ room }),
+          });
+          const data = await res.json();
+          if (!data.open) return;
+          clearInterval(timer);
+          const naam = encodeURIComponent('"' + (naamveld.value.trim() || "Gast") + '"');
+          const src = "https://jitsi.member.fsf.org/" + encodeURIComponent(room) + "#config.prejoinPageEnabled=false&config.disableDeepLinking=true&userInfo.displayName=" + naam;
+          document.body.innerHTML = '<iframe title="Vergadering" allow="camera *; microphone *; fullscreen *; display-capture *; autoplay *" allowfullscreen src="' + src + '"></iframe>';
+        } catch {}
+      }, 3000);
+    }
+  </script>
+</body>
+</html>

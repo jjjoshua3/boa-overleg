@@ -98,7 +98,7 @@ async function api(body) {
 
 function jitsi(room, video) {
   const naam = encodeURIComponent(`"${publiekeNaam()}"`);
-  return `https://meet.jit.si/${encodeURIComponent(room)}#config.prejoinPageEnabled=false&config.startWithVideoMuted=${video ? "false" : "true"}&config.disableDeepLinking=true&userInfo.displayName=${naam}`;
+  return `https://jitsi.member.fsf.org/${encodeURIComponent(room)}#config.prejoinPageEnabled=false&config.requireDisplayName=false&config.startWithVideoMuted=${video ? "false" : "true"}&config.disableDeepLinking=true&userInfo.displayName=${naam}`;
 }
 
 function mensenHtmlLijst() {
@@ -197,7 +197,7 @@ function teken() {
           ${dmNu ? "" : `<div class="rij"><button class="sec" id="audio" type="button">Start team-call (audio)</button><button class="primair" id="video" type="button">Start video-meeting en schermdelen</button></div>`}</div></div>
         ${dmNu ? "" : `<div class="tabs"><button class="${tab === "gesprekken" ? "aan" : ""}" data-tab="gesprekken" type="button">Gesprekken</button><button class="${tab === "taken" ? "aan" : ""}" data-tab="taken" type="button">Taken en goedkeuringen</button><button class="${tab === "tickets" ? "aan" : ""}" data-tab="tickets" type="button">Gekoppelde servicedesk-tickets</button></div>`}
         ${!dmNu && huidig.call_room && !meedoen ? `<div class="call"><span>Vergadering bezig in dit kanaal${huidig.call_door ? ` · gestart door ${esc(huidig.call_door)}` : ""}</span><span class="rij"><button id="mee" type="button">Nu deelnemen</button><button id="sluit" type="button">Voor iedereen sluiten</button></span></div>` : ""}
-        ${!dmNu && meedoen && huidig.call_room ? `<div class="hostbalk"><button class="sec" id="weg" type="button">Verlaten</button><button class="sec" id="sluit" type="button">Voor iedereen sluiten</button><button class="primair" id="deel" type="button">Kopieer link voor de klant</button><span class="zacht">De klant ziet het wachtscherm tot jij hier op Inloggen drukt en de host bent.</span></div><iframe class="beeld" title="Vergadering" allow="camera *; microphone *; fullscreen *; display-capture *; autoplay *" allowfullscreen src="${esc(jitsi(huidig.call_room, callVideo))}"></iframe>` : ""}
+        ${!dmNu && meedoen && huidig.call_room ? `<div class="hostbalk"><button class="sec" id="weg" type="button">Verlaten</button><button class="sec" id="sluit" type="button">Voor iedereen sluiten</button><button class="primair" id="deel" type="button">Kopieer link voor de klant</button><span class="zacht">Geen tweede login. Jij bent meteen de host. De klant wacht tot jij deze vergadering hebt gestart.</span></div><iframe class="beeld" title="Vergadering" allow="camera *; microphone *; fullscreen *; display-capture *; autoplay *" allowfullscreen src="${esc(jitsi(huidig.call_room, callVideo))}"></iframe>` : ""}
         <div class="stroom">${fout ? `<p class="fout">${esc(fout)}</p>` : ""}${inhoud()}</div>
         ${dmNu ? `<form class="composer" id="dm-form"><label>Bericht<textarea id="dm-tekst">${esc(conceptDm)}</textarea></label><button class="primair">Versturen</button></form>` : tab === "gesprekken" ? composer() : ""}
       </section>
@@ -546,7 +546,7 @@ async function startCall(video) {
 async function deelKlant() {
   const huidig = kanalen.find((rij) => rij.id === kanaal);
   if (!huidig?.call_room) return;
-  const link = `https://meet.jit.si/${encodeURIComponent(huidig.call_room)}`;
+  const link = `https://overleg.boaportaal.nl/gast.html?room=${encodeURIComponent(huidig.call_room)}`;
   try { await navigator.clipboard.writeText(link); } catch { window.prompt("Link voor de klant", link); return; }
   const knop = document.getElementById("deel");
   if (knop) knop.textContent = "Link gekopieerd";
