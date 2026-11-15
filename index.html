@@ -5,63 +5,79 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Overleg | BOA Portaal</title>
+  <script>try{if(localStorage.getItem("overleg-night")==="1")document.documentElement.classList.add("night");}catch(e){}</script>
   <meta name="robots" content="noindex">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="/favicon-180.png">
   <style>
-    :root { --ink:#0f2537; --soft:#4b5563; --paper:#efeae2; --card:#fffdf8; --line:#e4d8c8; --amber:#9a5b12; }
+    @font-face { font-family: "Plus Jakarta Sans"; src: url("/fonts/plus-jakarta-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+    @font-face { font-family: "Plus Jakarta Sans"; src: url("/fonts/plus-jakarta-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+    @font-face { font-family: "Plus Jakarta Sans"; src: url("/fonts/plus-jakarta-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+    @font-face { font-family: "Plus Jakarta Sans"; src: url("/fonts/plus-jakarta-700.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+    @font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+    @font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+    :root { --paper:#f8fafc; --panel:#fff; --ink:#0f172a; --muted:#475569; --line:#e2e8f0; --inset:#f1f5f9; --amber:#d97706; --ok:#059669; --stop:#b91c1c; --accent:#1d4ed8; --brand:#1e293b; }
+    html.night { --paper:#0b1320; --panel:#131f31; --ink:#e7eef5; --muted:#a9b8c6; --line:#26354d; --inset:#0e1826; }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
-    body { margin: 0; background: var(--paper); color: var(--ink); font-family: "Segoe UI", "Avenir Next", sans-serif; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: "Plus Jakarta Sans", "Segoe UI", sans-serif; line-height: 1.5; }
     button, input, textarea, select { font: inherit; color: inherit; }
     button { cursor: pointer; }
-    header.balk { height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; background: var(--ink); color: #fff; }
-    .merk { display: flex; align-items: center; gap: 10px; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-weight: 600; }
+    header.balk { height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: var(--panel); color: var(--ink); border-bottom: 1px solid var(--line); }
+    .merk { display: flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; font-weight: 650; letter-spacing: -0.02em; }
     .merk img { width: 32px; height: 32px; }
-    .merk strong { letter-spacing: .12em; font-size: 12px; }
-    .merk span { display: block; font-family: Georgia, serif; font-style: italic; color: #d9cfc3; letter-spacing: 0; }
-    header a, header button.licht { color: #fff; background: transparent; border: 1px solid rgba(255,255,255,.35); border-radius: 10px; padding: 7px 10px; text-decoration: none; }
+    .hier { color: var(--muted); font-size: 13px; font-weight: 650; }
+    .spatie { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+    header a.tekst, header button.licht { color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 2px; padding: 7px 10px; text-decoration: none; font-size: 14px; font-weight: 650; min-height: 40px; }
     .poort { width: min(460px, calc(100% - 32px)); margin: 48px auto; }
-    h1 { font-family: Georgia, serif; font-weight: 500; font-size: 36px; margin: 0 0 8px; }
-    .sub { color: var(--soft); line-height: 1.5; }
-    .kaart { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
-    label { display: grid; gap: 4px; font-size: 13px; font-weight: 650; margin-bottom: 10px; }
-    input, textarea, select { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; width: 100%; }
+    h1 { font-weight: 650; font-size: 32px; letter-spacing: -0.03em; margin: 0 0 8px; }
+    h2 { font-weight: 650; letter-spacing: -0.02em; }
+    .kicker { letter-spacing: .08em; font-size: 12px; color: var(--amber); font-weight: 700; margin: 0 0 6px; }
+    .sub { color: var(--muted); line-height: 1.5; }
+    .kaart, .draad, .persoon, .ticketkaart, .voorstelkaart { background: var(--panel); border: 1px solid var(--line); border-radius: 2px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04); }
+    .kaart { padding: 16px; }
+    label { display: grid; gap: 4px; font-size: 14px; font-weight: 650; margin-bottom: 10px; }
+    input, textarea, select { background: var(--panel); border: 1px solid var(--line); border-radius: 2px; padding: 8px 10px; width: 100%; min-height: 44px; font-weight: 500; }
     textarea { min-height: 74px; resize: vertical; }
-    .primair, .sec, .stem { border-radius: 10px; padding: 8px 12px; }
-    .primair { background: var(--ink); color: #fff; border: 0; }
-    .sec, .stem { background: transparent; border: 1px solid var(--line); }
-    .fout { color: #7f1d1d; background: #fde8e8; border-radius: 10px; padding: 8px 10px; }
-    .werk { height: calc(100vh - 58px); display: grid; grid-template-columns: 240px minmax(0, 1fr) 260px; }
+    .primair, .sec, .stem { border-radius: 2px; min-height: 40px; padding: 8px 12px; font-size: 14px; font-weight: 650; }
+    .primair { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
+    .sec, .stem { background: var(--panel); border: 1px solid var(--line); color: var(--ink); }
+    .stem.aan { background: #e7f5ec; border-color: var(--ok); }
+    html.night .stem.aan { background: #10281a; }
+    .fout { color: var(--stop); background: #fdecec; border-radius: 2px; padding: 8px 10px; }
+    html.night .fout { background: #2a1214; }
+    .werk { height: calc(100vh - 56px); display: grid; grid-template-columns: 240px minmax(0, 1fr) 260px; }
     .kolom { min-height: 0; overflow: auto; }
-    .kanalen { background: #f7f3ec; border-right: 1px solid var(--line); padding: 12px; }
-    .kanalen button.kanaal { display: block; width: 100%; text-align: left; background: transparent; border: 0; border-radius: 12px; padding: 10px; margin-bottom: 4px; }
-    .kanalen button.kanaal.aan { background: var(--ink); color: #fff; }
-    .kanalen small, .mens small, .zacht { color: var(--soft); font-weight: 500; }
-    .midden { display: flex; flex-direction: column; background: var(--card); }
+    .kanalen, .mensen { background: var(--paper); padding: 12px; }
+    .kanalen { border-right: 1px solid var(--line); }
+    .mensen { border-left: 1px solid var(--line); }
+    .kanalen button.kanaal { display: block; width: 100%; text-align: left; background: transparent; border: 0; border-radius: 2px; padding: 10px; margin-bottom: 4px; color: var(--muted); }
+    .kanalen button.kanaal.aan { background: var(--panel); color: var(--ink); box-shadow: inset 3px 0 0 var(--accent); }
+    .kanalen small, .zacht { color: var(--muted); font-weight: 500; }
+    .midden { display: flex; flex-direction: column; background: var(--panel); min-width: 0; }
     .kop { padding: 12px 16px 8px; border-bottom: 1px solid var(--line); }
-    .kop h2 { font-family: Georgia, serif; font-weight: 500; font-size: 26px; margin: 0; }
+    .kop h2 { font-size: 22px; margin: 0; }
     .koprij, .rij { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .koprij { justify-content: space-between; }
-    .tabs { display: flex; gap: 6px; padding: 8px 16px 0; }
-    .tabs button { background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 2px; color: var(--soft); }
-    .tabs button.aan { color: var(--ink); border-color: var(--ink); font-weight: 700; }
-    .call { margin: 8px 16px 0; background: #312e81; color: #fff; border-radius: 12px; padding: 10px 12px; display: flex; justify-content: space-between; gap: 8px; align-items: center; }
-    .call button { background: #fff; color: #312e81; border: 0; border-radius: 10px; padding: 8px 12px; }
-    .beeld { margin: 8px 16px 0; height: 420px; border: 0; width: calc(100% - 32px); border-radius: 12px; background: #111; }
-    .stroom { flex: 1; overflow: auto; padding: 12px 16px; }
-    .draad { border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin-bottom: 10px; }
+    .tabs { display: flex; gap: 14px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+    .tabs button { background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 0; color: var(--muted); font-weight: 650; }
+    .tabs button.aan { color: var(--ink); border-color: var(--ink); }
+    .call { margin: 8px 16px 0; background: var(--brand); color: #fff; border-radius: 2px; padding: 10px 12px; display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+    .call button { background: #fff; color: var(--brand); border: 0; border-radius: 2px; padding: 8px 12px; font-weight: 650; }
+    .beeld { margin: 8px 16px 0; height: 420px; border: 0; width: calc(100% - 32px); border-radius: 2px; background: #111; }
+    .stroom { flex: 1; overflow: auto; padding: 12px 16px; background: var(--paper); }
+    .draad { padding: 12px; margin-bottom: 10px; }
     .draad.dicht { cursor: pointer; }
-    .label { display: inline-block; font-size: 11px; letter-spacing: .04em; font-weight: 700; border-radius: 999px; padding: 2px 8px; background: #f8efe2; color: var(--amber); }
+    .label { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 2px; padding: 2px 6px; background: #fef4e6; color: #0f172a; }
+    html.night .label { background: #2a1d0c; color: var(--ink); }
     .bericht { padding: 8px 0; border-top: 1px solid var(--line); }
     .bericht:first-of-type { border-top: 0; }
-    .stem.aan { background: #e7f0ea; border-color: #1f6b45; }
-    .composer { border-top: 1px solid var(--line); padding: 10px 16px 14px; background: #fffaf3; }
-    .mensen { border-left: 1px solid var(--line); background: #f7f3ec; padding: 12px; }
-    .persoon { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; margin-bottom: 8px; }
+    .composer { border-top: 1px solid var(--line); padding: 10px 16px 14px; background: var(--panel); }
+    .persoon { padding: 8px 10px; margin-bottom: 8px; }
     .stip { width: 8px; height: 8px; border-radius: 99px; display: inline-block; margin-right: 6px; }
-    .ticketkaart, .voorstelkaart { background: #f7f1e8; border-radius: 10px; padding: 8px 10px; margin-top: 6px; }
+    .ticketkaart, .voorstelkaart { padding: 8px 10px; margin-top: 6px; background: var(--inset); }
     @media (max-width: 980px) {
       .werk { height: auto; grid-template-columns: 1fr; }
       .beeld { height: 280px; }

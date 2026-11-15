@@ -79,11 +79,11 @@ function jitsi(room, video) {
 
 function mensenHtmlLijst() {
   const lijst = mensen();
-  return lijst.map((persoon) => `<article class="persoon"><div><span class="stip" style="background:${STIP[persoon.status] || STIP.aanwezig}"></span><b>${esc(persoon.pv_naam)}</b></div><small>[${esc(rolVan(persoon))}] · ${esc(persoon.client_id)}</small><br><small>${esc(persoon.email || "")}</small><div class="zacht">${esc(STATUSSEN.find(([id]) => id === persoon.status)?.[1] || "Aanwezig")}</div></article>`).join("") || `<p class="zacht">Nog niemand anders online.</p>`;
+  return lijst.map((persoon) => `<article class="persoon"><div><span class="stip" style="background:${STIP[persoon.status] || STIP.aanwezig}"></span><b>${esc(persoon.pv_naam)}</b></div><small>[${esc(rolVan(persoon))}] · <span class="mono">${esc(persoon.client_id)}</span></small><br><small>${esc(persoon.email || "")}</small><div class="zacht">${esc(STATUSSEN.find(([id]) => id === persoon.status)?.[1] || "Aanwezig")}</div></article>`).join("") || `<p class="zacht">Nog niemand anders online.</p>`;
 }
 
 function mensenHtml() {
-  return `<h2 style="font-family:Georgia,serif;font-weight:500;font-size:22px;margin:4px 0 8px">Team</h2>
+  return `<h2 style="font-size:18px;margin:4px 0 8px">Team</h2>
     <label>Status<select id="status">${STATUSSEN.map(([id, label]) => `<option value="${id}" ${ik.status === id ? "selected" : ""}>${label}</option>`).join("")}</select></label>
     <label>Rol die collega's zien<input id="aanduiding" value="${esc(ik.aanduiding || "")}" placeholder="Vakredacteur Domein II"></label>
     <div id="lijst">${mensenHtmlLijst()}</div>`;
@@ -118,14 +118,14 @@ function draadHtml(onderwerp) {
 
 function teken() {
   if (!ik) {
-    app.innerHTML = `<header class="balk"><div class="merk"><img src="/favicon.svg" alt=""><div><strong>BOA PORTAAL</strong><span>Overleg</span></div></div></header>
-      <main class="poort"><p style="letter-spacing:.14em;font-size:12px;color:#9a5b12;font-weight:700">ALLEEN VOOR MEDEWERKERS</p><h1>Overleg</h1><p class="sub">Hier stemt het team af. Een medewerker komt hier vanzelf in, met hetzelfde e-mailadres als op boaportaal.nl.</p>
+    app.innerHTML = `<header class="balk"><a class="merk" href="https://boaportaal.nl"><img src="/boa-mark.png" alt=""><span>BOA Portaal</span></a><span class="hier">Overleg</span></header>
+      <main class="poort"><p class="kicker">ALLEEN VOOR MEDEWERKERS</p><h1>Overleg</h1><p class="sub">Hier stemt het team af. Een medewerker komt hier vanzelf in, met hetzelfde e-mailadres als op boaportaal.nl.</p>
       <form id="in" class="kaart"><label>E-mailadres<input name="email" type="email" required autocomplete="username"></label><label>Wachtwoord<input name="password" type="password" required autocomplete="current-password"></label><button class="primair">Inloggen</button>${fout ? `<p class="fout">${esc(fout)}</p>` : ""}</form></main>`;
     document.getElementById("in").onsubmit = aanmelden;
     return;
   }
   if (!ik.medewerker) {
-    app.innerHTML = `<header class="balk"><div class="merk"><img src="/favicon.svg" alt=""><div><strong>BOA PORTAAL</strong><span>Overleg</span></div></div><button class="licht" id="uit" type="button">Afmelden</button></header>
+    app.innerHTML = `<header class="balk"><a class="merk" href="https://boaportaal.nl"><img src="/boa-mark.png" alt=""><span>BOA Portaal</span></a><span class="hier">Overleg</span><div class="spatie"><button class="licht" id="uit" type="button">Afmelden</button></div></header>
       <main class="poort"><h1>Geen toegang</h1><p class="sub">${esc(ik.pv_naam)} ${esc(ik.client_id)} is geen medewerker. Wie in systeem als medewerker staat, komt hier vanzelf in.</p></main>`;
     document.getElementById("uit").onclick = afmelden;
     return;
@@ -134,7 +134,7 @@ function teken() {
   const team = mensen();
   const beschikbaar = team.filter((persoon) => persoon.status !== "afwezig").length;
   const tickets = berichten.filter((rij) => rij.kaart?.type === "ticket");
-  app.innerHTML = `<header class="balk"><div class="merk"><img src="/favicon.svg" alt=""><div><strong>BOA PORTAAL</strong><span>Overleg</span></div></div><div class="rij"><a href="https://boaportaal.nl">Portaal</a><button class="licht" id="uit" type="button">Afmelden ${esc(ik.client_id)}</button></div></header>
+  app.innerHTML = `<header class="balk"><a class="merk" href="https://boaportaal.nl"><img src="/boa-mark.png" alt=""><span>BOA Portaal</span></a><span class="hier">Overleg</span><div class="spatie"><button class="licht" id="nacht" type="button">${document.documentElement.classList.contains("night") ? "Dag" : "Nachtdienst"}</button><a class="tekst" href="https://boaportaal.nl">Portaal</a><button class="licht" id="uit" type="button">Afmelden <span class="mono">${esc(ik.client_id)}</span></button></div></header>
     <div class="werk">
       <aside class="kolom kanalen"><p class="zacht">Kanalen</p>${kanalen.map((rij) => `<button class="kanaal ${rij.id === kanaal ? "aan" : ""}" type="button" data-kanaal="${esc(rij.id)}"><b>${esc(rij.naam)}</b><small style="display:block">${esc(rij.omschrijving)}</small></button>`).join("")}</aside>
       <section class="midden">
@@ -173,6 +173,12 @@ function composer() {
 
 function bind() {
   document.getElementById("uit").onclick = afmelden;
+  document.getElementById("nacht")?.addEventListener("click", () => {
+    const aan = !document.documentElement.classList.contains("night");
+    document.documentElement.classList.toggle("night", aan);
+    localStorage.setItem("overleg-night", aan ? "1" : "0");
+    teken();
+  });
   document.querySelectorAll("[data-kanaal]").forEach((knop) => knop.onclick = () => { kanaal = knop.dataset.kanaal; openId = ""; meedoen = false; tab = "gesprekken"; laad(); });
   document.querySelectorAll("[data-tab]").forEach((knop) => knop.onclick = () => { tab = knop.dataset.tab; teken(); });
   document.querySelectorAll("[data-open]").forEach((kaart) => kaart.onclick = (event) => {
