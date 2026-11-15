@@ -36,6 +36,7 @@ let labelConcept = "TER CONTROLE";
 let paneel = "";
 let meedoen = false;
 let callVideo = true;
+let team = [];
 let aanwezig = {};
 let bezig = false;
 let opnieuw = false;
@@ -46,9 +47,24 @@ function tijd(waarde) {
   return new Date(waarde).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
+function kaartVan(clientId) {
+  return team.find((rij) => rij.client_id === clientId) || {};
+}
+
+function publiekeNaam(clientId) {
+  const id = clientId || ik?.client_id || "";
+  const naam = String(kaartVan(id).naam || "").trim();
+  return naam || id;
+}
+
+function postbusVan(clientId) {
+  const local = String(kaartVan(clientId).postbus || "").trim().toLowerCase();
+  return local ? `${local}@boaportaal.nl` : "";
+}
 function rolVan(persoon) {
   if (persoon.aanduiding) return persoon.aanduiding;
-  return persoon.rol === "beheerder" ? "Beheerder" : "Support";
+  const rol = kaartVan(persoon.client_id).rol || persoon.rol;
+  return rol === "beheerder" ? "Beheerder" : "Support";
 }
 
 function mensen() {
@@ -73,13 +89,17 @@ async function api(body) {
 }
 
 function jitsi(room, video) {
-  const naam = encodeURIComponent(`"${ik.pv_naam}"`);
+  const naam = encodeURIComponent(`"${publiekeNaam()}"`);
   return `https://meet.jit.si/${encodeURIComponent(room)}#config.prejoinPageEnabled=false&config.startWithVideoMuted=${video ? "false" : "true"}&config.disableDeepLinking=true&userInfo.displayName=${naam}`;
 }
 
 function mensenHtmlLijst() {
   const lijst = mensen();
-  return lijst.map((persoon) => `<article class="persoon"><div><span class="stip" style="background:${STIP[persoon.status] || STIP.aanwezig}"></span><b>${esc(persoon.pv_naam)}</b></div><small>[${esc(rolVan(persoon))}] · <span class="mono">${esc(persoon.client_id)}</span></small><br><small>${esc(persoon.email || "")}</small><div class="zacht">${esc(STATUSSEN.find(([id]) => id === persoon.status)?.[1] || "Aanwezig")}</div></article>`).join("") || `<p class="zacht">Nog niemand anders online.</p>`;
+  return lijst.map((persoon) => {
+    const naam = String(kaartVan(persoon.client_id).naam || "").trim();
+    const postbus = postbusVan(persoon.client_id);
+    return `<article class="persoon"><div><span class="stip" style="background:${STIP[persoon.status] || STIP.aanwezig}"></span>${naam ? `<b>${esc(naam)}</b>` : `<b class="mono">${esc(persoon.client_id)}</b>`}</div><small>[${esc(rolVan(persoon))}]${naam ? ` · <span class="mono">${esc(persoon.client_id)}</span>` : ""}</small>${postbus ? `<br><small>${esc(postbus)}</small>` : ""}<div class="zacht">${esc(STATUSSEN.find(([id]) => id === persoon.status)?.[1] || "Aanwezig")}</div></article>`;
+  }).join("") || `<p class="zacht">Nog niemand anders online.</p>`;
 }
 
 function mensenHtml() {
@@ -107,8 +127,8 @@ function draadHtml(onderwerp) {
   const eerste = reeks[0];
   return `<article class="draad ${open ? "" : "dicht"}" data-open="${esc(onderwerp.id)}">
     <div class="rij"><span class="label">${esc(onderwerp.label || "OVERLEG")}</span><b>${esc(onderwerp.titel)}</b></div>
-    <small>${esc(onderwerp.maker_naam)} · ${esc(onderwerp.maker_id)} · ${tijd(onderwerp.created_at)} · ${reeks.length} ${reeks.length === 1 ? "bericht" : "berichten"}</small>
-    ${open ? reeks.map((bericht) => `<div class="bericht"><b>${esc(bericht.maker_naam)}</b> <small>${esc(bericht.maker_id)} · ${tijd(bericht.created_at)}</small><div>${esc(bericht.tekst)}</div>${kaartHtml(bericht.kaart)}<div class="rij" style="margin-top:6px">${STEMS.map(([code, label]) => {
+    <small>${esc(publiekeNaam(onderwerp.maker_id))} · <span class="mono">${esc(onderwerp.maker_id)}</span> · ${tijd(onderwerp.created_at)} · ${reeks.length} ${reeks.length === 1 ? "bericht" : "berichten"}</small>
+    ${open ? reeks.map((bericht) => `<div class="bericht"><b>${esc(publiekeNaam(bericht.maker_id))}</b> <small class="mono">${esc(bericht.maker_id)} · ${tijd(bericht.created_at)}</small><div>${esc(bericht.tekst)}</div>${kaartHtml(bericht.kaart)}<div class="rij" style="margin-top:6px">${STEMS.map(([code, label]) => {
       const van = stempels.filter((stem) => stem.bericht_id === bericht.id && stem.stempel === code);
       const eigen = van.some((stem) => stem.client_id === ik.client_id);
       return `<button class="stem ${eigen ? "aan" : ""}" type="button" data-stem="${esc(bericht.id)}" data-code="${code}">${label}${van.length ? ` ${van.length}` : ""}</button>`;
@@ -158,7 +178,7 @@ function inhoud(tickets) {
     return taken.length ? taken.map((rij) => `<article class="draad"><span class="label">TER CONTROLE</span> <b>${esc(rij.titel)}</b><p>${rij.soort === "boom" ? "Beslisboom" : "Feitcode"} · ${esc(rij.sleutel)} · voorgelegd door ${esc(rij.indiener)}</p>${ik.rol === "beheerder" ? `<button class="primair" data-keur="${esc(rij.id)}" type="button">Goedkeuren en op boaportaal.nl zetten</button>` : `<p class="zacht">Wacht op de hoofdbeheerder.</p>`}</article>`).join("") : `<p class="zacht">Er ligt niets ter goedkeuring.</p>`;
   }
   if (tab === "tickets") {
-    return tickets.length ? tickets.map((rij) => `<article class="draad"><b>${esc(rij.kaart.nummer)}</b>${kaartHtml(rij.kaart)}<small>Gekoppeld door ${esc(rij.maker_naam)}</small></article>`).join("") : `<p class="zacht">Nog geen ticket gekoppeld in dit kanaal.</p>`;
+    return tickets.length ? tickets.map((rij) => `<article class="draad"><b>${esc(rij.kaart.nummer)}</b>${kaartHtml(rij.kaart)}<small>Gekoppeld door ${esc(publiekeNaam(rij.maker_id))}</small></article>`).join("") : `<p class="zacht">Nog geen ticket gekoppeld in dit kanaal.</p>`;
   }
   return onderwerpen.map(draadHtml).join("") || `<p class="zacht">Nog geen gesprek. Begin onderaan een onderwerp.</p>`;
 }
@@ -264,7 +284,7 @@ async function start() {
 }
 
 function spoor() {
-  return { client_id: ik.client_id, pv_naam: ik.pv_naam, rol: ik.rol, email: ik.email, status: ik.status, aanduiding: ik.aanduiding };
+  return { client_id: ik.client_id, rol: ik.rol, status: ik.status, aanduiding: ik.aanduiding };
 }
 
 async function bewaarStatus() {
@@ -286,6 +306,8 @@ async function laadKanalen() {
 async function laad() {
   if (bezig) { opnieuw = true; return; }
   bezig = true;
+  const namen = await sb.rpc("boa_overleg_team");
+  if (!namen.error && Array.isArray(namen.data)) team = namen.data;
   const { data: onder, error } = await sb.from("boa_onderwerp").select("*").eq("kanaal_id", kanaal).order("created_at", { ascending: false }).limit(80);
   if (error) { fout = "Draai schema-0015.sql in Supabase. Daarna verversen."; bezig = false; teken(); return; }
   onderwerpen = onder || [];
@@ -314,9 +336,9 @@ async function plaats(event) {
   const titel = titelConcept.trim();
   const tekst = concept.trim();
   if (!titel || !tekst) { fout = "Vul een titel en een bericht in."; teken(); return; }
-  const gemaakt = await sb.from("boa_onderwerp").insert({ kanaal_id: kanaal, titel, label: labelConcept, maker_id: ik.client_id, maker_naam: ik.pv_naam }).select("id").single();
+  const gemaakt = await sb.from("boa_onderwerp").insert({ kanaal_id: kanaal, titel, label: labelConcept, maker_id: ik.client_id, maker_naam: publiekeNaam() }).select("id").single();
   if (gemaakt.error || !gemaakt.data) { fout = "Het onderwerp is niet geplaatst."; teken(); return; }
-  await sb.from("boa_bericht").insert({ onderwerp_id: gemaakt.data.id, maker_id: ik.client_id, maker_naam: ik.pv_naam, tekst });
+  await sb.from("boa_bericht").insert({ onderwerp_id: gemaakt.data.id, maker_id: ik.client_id, maker_naam: publiekeNaam(), tekst });
   concept = "";
   titelConcept = "";
   await laad();
@@ -326,14 +348,14 @@ async function reageer(id) {
   const veld = document.querySelector(`[data-reactie="${id}"]`);
   const tekst = veld?.value.trim() || "";
   if (!tekst) return;
-  await sb.from("boa_bericht").insert({ onderwerp_id: id, maker_id: ik.client_id, maker_naam: ik.pv_naam, tekst });
+  await sb.from("boa_bericht").insert({ onderwerp_id: id, maker_id: ik.client_id, maker_naam: publiekeNaam(), tekst });
   await laad();
 }
 
 async function stempel(berichtId, code) {
   const eigen = stempels.some((stem) => stem.bericht_id === berichtId && stem.client_id === ik.client_id && stem.stempel === code);
   if (eigen) await sb.from("boa_stempel").delete().match({ bericht_id: berichtId, client_id: ik.client_id, stempel: code });
-  else await sb.from("boa_stempel").insert({ bericht_id: berichtId, client_id: ik.client_id, pv_naam: ik.pv_naam, stempel: code });
+  else await sb.from("boa_stempel").insert({ bericht_id: berichtId, client_id: ik.client_id, pv_naam: publiekeNaam(), stempel: code });
   await laad();
 }
 
@@ -349,12 +371,12 @@ async function zoekTicket() {
 
 async function koppelTicket(rij) {
   const titel = `Ticket ${rij.ticket}`;
-  const gemaakt = await sb.from("boa_onderwerp").insert({ kanaal_id: kanaal, titel, label: "TICKET", maker_id: ik.client_id, maker_naam: ik.pv_naam }).select("id").single();
+  const gemaakt = await sb.from("boa_onderwerp").insert({ kanaal_id: kanaal, titel, label: "TICKET", maker_id: ik.client_id, maker_naam: publiekeNaam() }).select("id").single();
   if (gemaakt.error) { fout = "Het ticket is niet gekoppeld."; teken(); return; }
   await sb.from("boa_bericht").insert({
     onderwerp_id: gemaakt.data.id,
     maker_id: ik.client_id,
-    maker_naam: ik.pv_naam,
+    maker_naam: publiekeNaam(),
     tekst: "Ticket gekoppeld om er samen naar te kijken.",
     kaart: { type: "ticket", nummer: rij.ticket, client_id: rij.cid, pv_naam: rij.naam, status: rij.staat },
   });
@@ -374,12 +396,12 @@ async function legVoor() {
       tekst: document.getElementById("voorstel-tekst").value,
     });
     const voorstel = uit.voorstel;
-    const gemaakt = await sb.from("boa_onderwerp").insert({ kanaal_id: kanaal, titel: voorstel.titel, label: "TER CONTROLE", maker_id: ik.client_id, maker_naam: ik.pv_naam }).select("id").single();
+    const gemaakt = await sb.from("boa_onderwerp").insert({ kanaal_id: kanaal, titel: voorstel.titel, label: "TER CONTROLE", maker_id: ik.client_id, maker_naam: publiekeNaam() }).select("id").single();
     if (!gemaakt.error) {
       await sb.from("boa_bericht").insert({
         onderwerp_id: gemaakt.data.id,
         maker_id: ik.client_id,
-        maker_naam: ik.pv_naam,
+        maker_naam: publiekeNaam(),
         tekst: "Voorgelegd vanuit het overleg. De site toont het pas na goedkeuring.",
         kaart: { type: "voorstel", id: voorstel.id, soort: voorstel.soort, sleutel: voorstel.sleutel, titel: voorstel.titel },
       });
@@ -394,7 +416,7 @@ async function keur(id) {
   try {
     await api({ actie: "keur", id });
     const bericht = berichten.find((rij) => rij.kaart?.id === id);
-    if (bericht) await sb.from("boa_bericht").insert({ onderwerp_id: bericht.onderwerp_id, maker_id: ik.client_id, maker_naam: ik.pv_naam, tekst: "Goedgekeurd en op boaportaal.nl gezet." });
+    if (bericht) await sb.from("boa_bericht").insert({ onderwerp_id: bericht.onderwerp_id, maker_id: ik.client_id, maker_naam: publiekeNaam(), tekst: "Goedgekeurd en op boaportaal.nl gezet." });
     await laad();
   } catch (err) { fout = err.message; teken(); }
 }
