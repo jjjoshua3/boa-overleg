@@ -60,9 +60,29 @@ function kaartVan(clientId) {
   return team.find((rij) => rij.client_id === clientId) || {};
 }
 
+function zichtbareNaam(ruw) {
+  const t = String(ruw || "").trim().replace(/\s+/g, " ");
+  if (!t) return "";
+  const tussen = /^(de|van|der|den|ten|ter|het|t)$/i;
+  if (t.includes(",")) {
+    const [links, rechts] = t.split(",", 2);
+    const init = (rechts || "").trim().replace(/\./g, "").slice(0, 1).toUpperCase();
+    const woorden = links.trim().split(" ").filter((woord) => woord && !tussen.test(woord));
+    const letter = (woorden[0] || links.trim()).slice(0, 1).toUpperCase();
+    return init && letter ? `${init}. ${letter}.` : t;
+  }
+  const delen = t.split(" ");
+  const voorRaw = delen[0].replace(/\./g, "");
+  const voor = voorRaw.slice(0, 1).toUpperCase() + voorRaw.slice(1).toLowerCase();
+  const rest = delen.slice(1).filter((woord) => woord && !tussen.test(woord.replace(/\./g, "")));
+  const bron = (rest[0] || "").replace(/\./g, "");
+  return bron ? `${voor} ${bron.slice(0, 1).toUpperCase()}.` : voor;
+}
+
 function publiekeNaam(clientId) {
   const id = clientId || ik?.client_id || "";
-  const naam = String(kaartVan(id).naam || "").trim();
+  const kaart = kaartVan(id);
+  const naam = zichtbareNaam(kaart.naam || kaart.pv_naam || "");
   return naam || id;
 }
 
@@ -100,7 +120,7 @@ async function api(body) {
 function mensenHtmlLijst() {
   const lijst = mensen();
   return lijst.map((persoon) => {
-    const naam = String(kaartVan(persoon.client_id).naam || "").trim();
+    const naam = zichtbareNaam(kaartVan(persoon.client_id).naam || "");
     const postbus = postbusVan(persoon.client_id);
     return `<article class="persoon"><div><span class="stip" style="background:${STIP[persoon.status] || STIP.aanwezig}"></span>${naam ? `<b>${esc(naam)}</b>` : `<b class="mono">${esc(persoon.client_id)}</b>`}</div><small>[${esc(rolVan(persoon))}]${naam ? ` · <span class="mono">${esc(persoon.client_id)}</span>` : ""}</small>${postbus ? `<br><small>${esc(postbus)}</small>` : ""}${persoon.client_id === ik.client_id ? "" : `<div><button class="sec" type="button" data-dm="${esc(persoon.client_id)}">1 op 1</button></div>`}<div class="zacht">${esc(STATUSSEN.find(([id]) => id === persoon.status)?.[1] || "Aanwezig")}</div></article>`;
   }).join("") || `<p class="zacht">Nog niemand anders online.</p>`;
