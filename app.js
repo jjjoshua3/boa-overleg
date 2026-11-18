@@ -292,7 +292,7 @@ function agendaHtml() {
     <span class="label">${isPrive(open) ? "PRIVÉ" : "GEZAMENLIJK"}</span> <b>${esc(open.titel)}</b><br><small>${tijd(open.start)} – ${tijd(open.einde)}</small>
     <p style="margin:6px 0 0">${esc(open.omschrijving || "")}</p>
     <small>Door ${esc(publiekeNaam(open.gemaakt_door))}${open.deelnemers?.length ? " · " + open.deelnemers.map(publiekeNaam).join(", ") : ""}${open.gasten?.length ? " · " + open.gasten.join(", ") : ""}</small>
-    <div style="margin-top:8px"><label>Extra mailadressen<input data-extra="${esc(open.id)}" placeholder="nog-iemand@gemeente.nl"></label><button class="primair" data-stuur="${esc(open.id)}" type="button">Uitnodiging sturen</button> <button class="sec" data-kopieer="${esc(open.invite_token)}" type="button">Kopieer link</button> <button class="sec" data-ics="${esc(open.id)}" type="button">Download .ics</button> ${open.gemaakt_door === ik.client_id ? `<button class="sec" data-annuleer="${esc(open.id)}" type="button">Annuleren</button>` : ""}</div>
+    <div style="margin-top:8px"><a class="primair" href="${esc(belLink(open))}" target="_blank" rel="noopener">Deelnemen aan de call</a> <label>Extra mailadressen<input data-extra="${esc(open.id)}" placeholder="nog-iemand@gemeente.nl"></label><button class="primair" data-stuur="${esc(open.id)}" type="button">Uitnodiging sturen</button> <button class="sec" data-kopieer="${esc(open.invite_token)}" type="button">Kopieer link</button> <button class="sec" data-ics="${esc(open.id)}" type="button">Download .ics</button> ${open.gemaakt_door === ik.client_id ? `<button class="sec" data-annuleer="${esc(open.id)}" type="button">Annuleren</button>` : ""}</div>
   </article>` : "";
   return `<div class="weekbalk"><button class="sec" type="button" data-week="-1">Vorige week</button><b>${esc(titel)}</b><button class="sec" type="button" data-week="1">Volgende week</button><button class="sec" type="button" data-week="0">Deze week</button>${filters}</div>
     <p class="zacht">Blauw is gezamenlijk, voor het hele team. Geel is privé, alleen jij ziet die.</p>
@@ -300,6 +300,13 @@ function agendaHtml() {
     ${agendaMelding ? `<p style="color:#15803d">${esc(agendaMelding)}</p>` : ""}
     ${detail}
     ${form}`;
+}
+
+function belLink(afspraak) {
+  const ruw = String(afspraak?.invite_token || afspraak?.id || "").replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 40);
+  const room = `boa${ruw}`.slice(0, 48);
+  if (!/^boa[a-z0-9]{10,45}$/.test(room)) return "https://overleg.boaportaal.nl/";
+  return `https://overleg.boaportaal.nl/gast.html?room=${room}&direct=1`;
 }
 
 function pastFilter(afspraak) {
@@ -362,7 +369,7 @@ function bind() {
     teken();
   });
   document.querySelectorAll("[data-filter]").forEach((knop) => knop.onclick = () => { agendaFilter = knop.dataset.filter; teken(); });
-  document.querySelectorAll("[data-kopieer]").forEach((knop) => knop.onclick = async (e) => { e.stopPropagation(); const link = "https://overleg.boaportaal.nl/?afspraak=" + knop.dataset.kopieer; try { await navigator.clipboard.writeText(link); knop.textContent = "Gekopieerd"; setTimeout(() => knop.textContent = "Kopieer uitnodigingslink", 1500); } catch { alert(link); } });
+  document.querySelectorAll("[data-kopieer]").forEach((knop) => knop.onclick = async (e) => { e.stopPropagation(); const afspraak = afspraken.find((a) => a.invite_token === knop.dataset.kopieer); const link = afspraak ? belLink(afspraak) : "https://overleg.boaportaal.nl/?afspraak=" + knop.dataset.kopieer; try { await navigator.clipboard.writeText(link); knop.textContent = "Gekopieerd"; setTimeout(() => knop.textContent = "Kopieer link", 1500); } catch { alert(link); } });
   document.querySelectorAll("[data-ics]").forEach((knop) => knop.onclick = (e) => { e.stopPropagation(); const a = afspraken.find(x => x.id === knop.dataset.ics); if (a) icsVan(a); });
   document.querySelectorAll("[data-annuleer]").forEach((knop) => knop.onclick = async (e) => { e.stopPropagation(); if (!confirm("Annuleren? De genodigden krijgen dan een afmelding in hun agenda.")) return; try { await api({ actie: "agenda-weg", id: knop.dataset.annuleer }); } catch {} afspraken = afspraken.filter(x => x.id !== knop.dataset.annuleer); teken(); });
   document.querySelectorAll("[data-stuur]").forEach((knop) => knop.onclick = (e) => { e.stopPropagation(); stuurUitnodiging(knop.dataset.stuur); });
@@ -644,8 +651,8 @@ DTSTAMP:${dt(new Date())}
 DTSTART:${dt(a.start)}
 DTEND:${dt(a.einde)}
 SUMMARY:${a.titel.replace(/\n/g, " ")}
-DESCRIPTION:${(a.omschrijving || "").replace(/\n/g, "\\n")}
-URL:https://overleg.boaportaal.nl/?afspraak=${a.invite_token}
+DESCRIPTION:${((a.omschrijving || "") + "\\nNu deelnemen aan de call: " + belLink(a)).replace(/\n/g, "\\n")}
+URL:${belLink(a)}
 END:VEVENT
 END:VCALENDAR`;
   const blob = new Blob([body], { type: "text/calendar" });

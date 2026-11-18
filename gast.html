@@ -33,11 +33,31 @@
     <label>Je naam<input id="naam" maxlength="60" placeholder="Voornaam"></label>
   </main>
   <script>
-    const room = new URLSearchParams(location.search).get("room") || "";
+    const params = new URLSearchParams(location.search);
+    const room = params.get("room") || "";
+    const direct = params.get("direct") === "1";
     const vak = document.getElementById("wacht");
     const naamveld = document.getElementById("naam");
+    function start() {
+      const naam = naamveld.value.trim() || "Gast";
+      localStorage.setItem("overleg-gastnaam", naam);
+      document.body.innerHTML = '<div id="gesprek" class="gastbeeld"></div>';
+      document.body.style.display = "block";
+      return import("/gesprek.js").then(({ startGesprek }) => startGesprek(document.getElementById("gesprek"), { room, naam, video: true }));
+    }
     if (!/^boa[a-z0-9]{10,48}$/.test(room)) {
       vak.innerHTML = "<h1>Deze link klopt niet.</h1><p>Vraag een nieuwe link aan de host.</p>";
+    } else if (direct) {
+      vak.querySelector("h1").textContent = "Deelnemen aan de call";
+      const uitleg = vak.querySelectorAll("p")[1];
+      if (uitleg) uitleg.textContent = "Je hoeft nergens in te loggen. Vul je naam in en je zit in de vergadering.";
+      const knop = document.createElement("button");
+      knop.type = "button";
+      knop.textContent = "Nu deelnemen";
+      knop.style.cssText = "margin-top:16px;background:#1d4ed8;color:#fff;border:0;min-height:44px;padding:8px 14px;font:inherit;font-weight:700";
+      knop.onclick = start;
+      vak.appendChild(knop);
+      naamveld.value = localStorage.getItem("overleg-gastnaam") || "";
     } else {
       naamveld.value = localStorage.getItem("overleg-gastnaam") || "";
       naamveld.addEventListener("change", () => localStorage.setItem("overleg-gastnaam", naamveld.value.trim()));
