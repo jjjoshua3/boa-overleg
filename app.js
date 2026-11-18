@@ -593,16 +593,20 @@ async function maakAfspraak(event) {
     agendaWeek = maandagVan(new Date(opgeslagen.start));
     agendaFilter = isPrive(opgeslagen) ? "prive" : "team";
     afspraakConcept = { titel: "", start: "", einde: "", omschrijving: "", deelnemers: [], gasten: "", soort: "team" };
-    agendaMelding = "Afspraak staat in de agenda.";
+    agendaMelding = "";
     try {
-      const mail = await api({ actie: "agenda", id: opgeslagen.id, gasten });
-      agendaMelding = mail.naar?.length ? `Uitnodiging gestuurd naar ${mail.naar.join(", ")}.` : agendaMelding;
-      if (mail.naar) opgeslagen.gasten = mail.naar;
+      const mail = await api({ actie: "agenda", id: opgeslagen.id, gasten, eigen: ik.email });
+      if (mail.naar?.length) {
+        agendaMelding = `Uitnodiging gestuurd naar ${mail.naar.join(", ")}.`;
+        opgeslagen.gasten = mail.naar;
+      } else {
+        fout = "De afspraak staat in de agenda. Er is geen uitnodiging verstuurd.";
+      }
     } catch (e) {
       const tekst = e?.message || "";
       fout = tekst === "Failed to fetch"
-        ? "De afspraak staat in de agenda. De mail is niet weg. Zet PURELYMAIL_AFSPRAAK_PASSWORD bij de Netlify-site van systeem. Dat is het wachtwoord van afspraak@boaportaal.nl."
-        : `De afspraak staat in de agenda. ${tekst}`;
+        ? "De afspraak staat in de agenda. De mail is niet weg. Het wachtwoord staat niet op de Netlify-site systeemboa."
+        : `De afspraak staat in de agenda. De mail is niet weg. ${tekst}`;
     }
   } catch (e) {
     const tekst = e?.message || "";
@@ -618,7 +622,7 @@ async function stuurUitnodiging(id) {
   agendaMelding = "";
   fout = "";
   try {
-    const uit = await api({ actie: "agenda", id, gasten: extra });
+    const uit = await api({ actie: "agenda", id, gasten: extra, eigen: ik.email });
     agendaMelding = uit.naar?.length ? `Uitnodiging gestuurd naar ${uit.naar.join(", ")}.` : "Geen mailadres verstuurd.";
     const rij = afspraken.find((a) => a.id === id);
     if (rij && uit.naar) rij.gasten = uit.naar;
