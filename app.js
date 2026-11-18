@@ -238,7 +238,6 @@ function inhoud() {
   if (modus === "dm") {
     return dmBerichten.map((bericht) => `<div class="bericht"><b>${esc(publiekeNaam(bericht.maker_id))}</b> <small>${tijd(bericht.created_at)}</small><div>${esc(bericht.tekst)}</div></div>`).join("") || `<p class="zacht">Nog niets. Stuur het eerste bericht.</p>`;
   }
-  if (tab === "agenda") { await laadAfspraken(); teken(); return; }
   if (tab === "taken") {
     return taken.length ? taken.map((rij) => `<article class="draad"><span class="label">TER CONTROLE</span> <b>${esc(rij.titel)}</b><p>${rij.soort === "boom" ? "Beslisboom" : "Feitcode"} · ${esc(rij.sleutel)} · voorgelegd door ${esc(rij.indiener)}</p>${ik.rol === "beheerder" ? `<button class="primair" data-keur="${esc(rij.id)}" type="button">Goedkeuren en op boaportaal.nl zetten</button>` : `<p class="zacht">Wacht op de hoofdbeheerder.</p>`}</article>`).join("") : `<p class="zacht">Er ligt niets ter goedkeuring.</p>`;
   }
@@ -317,6 +316,9 @@ function bind() {
     tab = knop.dataset.tab;
     if (tab === "taken") {
       try { taken = (await api({ actie: "taken" })).taken || []; } catch { taken = []; }
+    }
+    if (tab === "agenda") {
+      try { await laadAfspraken(); } catch { afspraken = []; }
     }
     teken();
   });
