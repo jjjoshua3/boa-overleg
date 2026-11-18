@@ -55,6 +55,8 @@ let afspraken = [];
 let afspraakOpen = "";
 let afspraakConcept = { titel: "", start: "", einde: "", omschrijving: "", deelnemers: [], gasten: "", soort: "team" };
 let agendaCall = "";
+let agendaMelding = "";
+let agendaBezig = false;
 let agendaFilter = "alles";
 let agendaWeek = maandagVan(new Date());
 
@@ -287,13 +289,13 @@ function agendaHtml() {
     <label>Omschrijving<textarea name="omschrijving">${esc(afspraakConcept.omschrijving)}</textarea></label>
     <label>Deelnemers<select name="deelnemers" multiple size="5" style="min-height:90px">${team.map(r => `<option value="${esc(r.client_id)}" ${afspraakConcept.deelnemers.includes(r.client_id) ? "selected" : ""}>${esc(r.naam || r.client_id)} · ${esc(r.client_id)}</option>`).join("")}</select><small class="zacht">Ctrl of Cmd ingedrukt houden voor meerdere. Hun loginmail krijgt de uitnodiging.</small></label>
     <label>Mailadressen, ook extern<textarea name="gasten" placeholder="naam@gemeente.nl, iemand@gmail.com">${esc(afspraakConcept.gasten)}</textarea><small class="zacht">Zij krijgen een agenda-uitnodiging. Accepteren zet de afspraak in hun agenda.</small></label>
-    <button class="primair" type="submit">Inplannen en uitnodiging sturen</button>
+    <button class="primair" type="submit" ${agendaBezig ? "disabled" : ""}>${agendaBezig ? "Bezig met versturen..." : "Inplannen en uitnodiging sturen"}</button>
   </form>`;
   const detail = open && pastFilter(open) ? `<article class="draad">
     <span class="label">${isPrive(open) ? "PRIVÉ" : "GEZAMENLIJK"}</span> <b>${esc(open.titel)}</b><br><small>${tijd(open.start)} – ${tijd(open.einde)}</small>
     <p style="margin:6px 0 0">${esc(open.omschrijving || "")}</p>
     <small>Door ${esc(publiekeNaam(open.gemaakt_door))}${open.deelnemers?.length ? " · " + open.deelnemers.map(publiekeNaam).join(", ") : ""}${open.gasten?.length ? " · " + open.gasten.join(", ") : ""}</small>
-    <div style="margin-top:8px"><button class="primair" type="button" data-join="${esc(open.id)}">Join call</button> <label>Extra mailadressen<input data-extra="${esc(open.id)}" placeholder="nog-iemand@gemeente.nl"></label><button class="primair" data-stuur="${esc(open.id)}" type="button">Uitnodiging sturen</button> <button class="sec" data-kopieer="${esc(open.invite_token)}" type="button">Kopieer link</button> <button class="sec" data-ics="${esc(open.id)}" type="button">Download .ics</button> ${open.gemaakt_door === ik.client_id ? `<button class="sec" data-annuleer="${esc(open.id)}" type="button">Annuleren</button>` : ""}</div>
+    <div style="margin-top:8px"><button class="primair" type="button" data-join="${esc(open.id)}">Join call</button> <label>Extra mailadressen<input data-extra="${esc(open.id)}" placeholder="nog-iemand@gemeente.nl"></label><button class="primair" data-stuur="${esc(open.id)}" type="button" ${agendaBezig ? "disabled" : ""}>${agendaBezig ? "Bezig met versturen..." : "Uitnodiging sturen"}</button> <button class="sec" data-kopieer="${esc(open.invite_token)}" type="button">Kopieer link</button> <button class="sec" data-ics="${esc(open.id)}" type="button">Download .ics</button> ${open.gemaakt_door === ik.client_id ? `<button class="sec" data-annuleer="${esc(open.id)}" type="button">Annuleren</button>` : ""}</div>
     <p class="zacht">Join call en de link in de mail openen alleen deze afspraak.</p>
   </article>` : "";
   return `<div class="weekbalk"><button class="sec" type="button" data-week="-1">Vorige week</button><b>${esc(titel)}</b><button class="sec" type="button" data-week="1">Volgende week</button><button class="sec" type="button" data-week="0">Deze week</button>${filters}</div>
@@ -589,9 +591,11 @@ async function maakAfspraak(event) {
   const omschrijving = String(f.get("omschrijving") || "").trim();
   const deelnemers = [...(event.target.querySelector("[name=deelnemers]")?.selectedOptions || [])].map(o => o.value);
   const gasten = String(f.get("gasten") || "").trim();
-  if (!titel || !start || !einde) return;
+  if (!titel || !start || !einde || agendaBezig) return;
+  agendaBezig = true;
   fout = "";
-  agendaMelding = "";
+  agendaMelding = "Bezig met versturen...";
+  teken();
   const prive = String(f.get("soort") || "") === "prive";
   afspraakConcept = { titel, start, einde, omschrijving, deelnemers, gasten, soort: prive ? "prive" : "team" };
   const rij = {
@@ -628,7 +632,7 @@ async function maakAfspraak(event) {
     try {
       const mail = await api({ actie: "agenda", id: opgeslagen.id, gasten, eigen: ik.email });
       if (mail.naar?.length) {
-        agendaMelding = `Uitnodiging gestuurd naar ${mail.naar.join(", ")}.`;
+        agendaMelding = `Uitnodiging is verstuurd naar ${mail.naar.join(", ")}.`;
         opgeslagen.gasten = mail.naar;
       } else {
         fout = "De afspraak staat in de agenda. Er is geen uitnodiging verstuurd.";
@@ -644,23 +648,31 @@ async function maakAfspraak(event) {
     fout = /row-level security|permission denied/i.test(tekst)
       ? "De agenda weigert de afspraak. Draai schema-0027.sql in Supabase en probeer opnieuw."
       : (tekst === "Failed to fetch" ? "De afspraak is niet opgeslagen. Ververs de pagina en probeer het opnieuw." : (tekst || "De afspraak is niet opgeslagen."));
+  } finally {
+    agendaBezig = false;
+    teken();
   }
-  teken();
 }
 
 async function stuurUitnodiging(id) {
+  if (agendaBezig) return;
   const extra = document.querySelector(`[data-extra="${id}"]`)?.value || "";
-  agendaMelding = "";
+  agendaBezig = true;
+  agendaMelding = "Bezig met versturen...";
   fout = "";
+  teken();
   try {
     const uit = await api({ actie: "agenda", id, gasten: extra, eigen: ik.email });
-    agendaMelding = uit.naar?.length ? `Uitnodiging gestuurd naar ${uit.naar.join(", ")}.` : "Geen mailadres verstuurd.";
+    agendaMelding = uit.naar?.length ? `Uitnodiging is verstuurd naar ${uit.naar.join(", ")}.` : "Geen mailadres verstuurd.";
     const rij = afspraken.find((a) => a.id === id);
     if (rij && uit.naar) rij.gasten = uit.naar;
   } catch (e) {
+    agendaMelding = "";
     fout = e.message || "De uitnodiging is niet verstuurd.";
+  } finally {
+    agendaBezig = false;
+    teken();
   }
-  teken();
 }
 
 function icsVan(a) {
