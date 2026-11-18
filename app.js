@@ -569,12 +569,20 @@ async function maakAfspraak(event) {
       afspraakOpen = uit.afspraak.id;
     }
     afspraakConcept = { titel: "", start: "", einde: "", omschrijving: "", deelnemers: [], gasten: "", soort: "team" };
-    if (uit.naar?.length) agendaMelding = `Uitnodiging gestuurd naar ${uit.naar.join(", ")}.`;
-    else if (uit.mailfout) fout = `De afspraak staat erin. ${uit.mailfout}`;
-    else fout = "De afspraak staat erin. Er is geen uitnodiging verstuurd.";
+    if (!uit.afspraak?.id) throw new Error("De afspraak is niet opgeslagen.");
+    try {
+      const mail = await api({ actie: "agenda", id: uit.afspraak.id, gasten });
+      agendaMelding = mail.naar?.length ? `Uitnodiging gestuurd naar ${mail.naar.join(", ")}.` : "Afspraak staat in de agenda. Er is geen uitnodiging verstuurd.";
+      if (uit.afspraak && mail.naar) uit.afspraak.gasten = mail.naar;
+    } catch (e) {
+      const tekst = e?.message || "";
+      fout = tekst === "Failed to fetch"
+        ? "De afspraak staat in de agenda. De mail is niet weg. Die gaat vanaf onboarding@boaportaal.nl. Zet PURELYMAIL_ONBOARDING_PASSWORD bij de Netlify-site van systeem."
+        : `De afspraak staat in de agenda. ${tekst}`;
+    }
   } catch (e) {
     const tekst = e?.message || "";
-    fout = tekst === "Failed to fetch" ? "De server antwoordde niet. De afspraak is misschien wel opgeslagen. Ververs de agenda." : (tekst || "De afspraak is niet opgeslagen.");
+    fout = tekst === "Failed to fetch" ? "De server antwoordde niet. Ververs de agenda en kijk of de afspraak er staat." : (tekst || "De afspraak is niet opgeslagen.");
   }
   teken();
 }
