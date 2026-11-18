@@ -534,10 +534,20 @@ async function laad() {
 }
 
 async function laadAfspraken() {
+  const { data, error } = await sb.from("boa_afspraak").select("id, titel, omschrijving, start, einde, gemaakt_door, deelnemers, kanaal_id, invite_token, status, gasten").neq("status", "geannuleerd").order("start");
+  if (!error && data) {
+    afspraken = data.filter((a) => a.kanaal_id !== "prive" || a.gemaakt_door === ik?.client_id);
+    return;
+  }
+  const kaal = await sb.from("boa_afspraak").select("id, titel, omschrijving, start, einde, gemaakt_door, deelnemers, kanaal_id, invite_token, status").neq("status", "geannuleerd").order("start");
+  if (!kaal.error && kaal.data) {
+    afspraken = kaal.data.filter((a) => a.kanaal_id !== "prive" || a.gemaakt_door === ik?.client_id);
+    return;
+  }
   try {
     const uit = await api({ actie: "agenda-lijst" });
     afspraken = uit.afspraken || [];
-  } catch (e) { afspraken = []; }
+  } catch { afspraken = []; }
 }
 
 async function maakAfspraak(event) {
@@ -552,37 +562,52 @@ async function maakAfspraak(event) {
   if (!titel || !start || !einde) return;
   fout = "";
   agendaMelding = "";
+  const prive = String(f.get("soort") || "") === "prive";
+  afspraakConcept = { titel, start, einde, omschrijving, deelnemers, gasten, soort: prive ? "prive" : "team" };
+  const rij = {
+    titel,
+    omschrijving,
+    start: new Date(start).toISOString(),
+    einde: new Date(einde).toISOString(),
+    gemaakt_door: ik.client_id,
+    deelnemers,
+    kanaal_id: prive ? "prive" : "team",
+    invite_token: crypto.randomUUID().replace(/-/g, ""),
+    status: "gepland",
+  };
   try {
-    const uit = await api({
-      actie: "agenda-nieuw",
-      titel,
-      start: new Date(start).toISOString(),
-      einde: new Date(einde).toISOString(),
-      omschrijving,
-      deelnemers,
-      gasten,
-      prive: String(f.get("soort") || "") === "prive",
-      kanaal,
-    });
-    if (uit.afspraak) {
-      afspraken.unshift(uit.afspraak);
-      afspraakOpen = uit.afspraak.id;
+    let opgeslagen = null;
+    const direct = await sb.from("boa_afspraak").insert(rij).select("id, titel, omschrijving, start, einde, gemaakt_door, deelnemers, kanaal_id, invite_token, status").single();
+    if (!direct.error && direct.data) opgeslagen = direct.data;
+    else {
+      try {
+        const uit = await api({ actie: "agenda-nieuw", ...rij, prive, gasten });
+        opgeslagen = uit.afspraak || null;
+      } catch (e) {
+        const db = direct.error?.message || "";
+        throw new Error(db || e?.message || "De afspraak is niet opgeslagen.");
+      }
+      if (!opgeslagen) throw new Error(direct.error?.message || "De afspraak is niet opgeslagen.");
     }
+    afspraken.unshift(opgeslagen);
+    afspraakOpen = opgeslagen.id;
     afspraakConcept = { titel: "", start: "", einde: "", omschrijving: "", deelnemers: [], gasten: "", soort: "team" };
-    if (!uit.afspraak?.id) throw new Error("De afspraak is niet opgeslagen.");
+    agendaMelding = "Afspraak staat in de agenda.";
     try {
-      const mail = await api({ actie: "agenda", id: uit.afspraak.id, gasten });
-      agendaMelding = mail.naar?.length ? `Uitnodiging gestuurd naar ${mail.naar.join(", ")}.` : "Afspraak staat in de agenda. Er is geen uitnodiging verstuurd.";
-      if (uit.afspraak && mail.naar) uit.afspraak.gasten = mail.naar;
+      const mail = await api({ actie: "agenda", id: opgeslagen.id, gasten });
+      agendaMelding = mail.naar?.length ? `Uitnodiging gestuurd naar ${mail.naar.join(", ")}.` : agendaMelding;
+      if (mail.naar) opgeslagen.gasten = mail.naar;
     } catch (e) {
       const tekst = e?.message || "";
       fout = tekst === "Failed to fetch"
-        ? "De afspraak staat in de agenda. De mail is niet weg. Die gaat vanaf afspraak@boaportaal.nl. Zet PURELYMAIL_AFSPRAAK_PASSWORD bij de Netlify-site van systeem."
+        ? "De afspraak staat in de agenda. De mail is niet weg. Zet PURELYMAIL_AFSPRAAK_PASSWORD bij de Netlify-site van systeem. Dat is het wachtwoord van afspraak@boaportaal.nl."
         : `De afspraak staat in de agenda. ${tekst}`;
     }
   } catch (e) {
     const tekst = e?.message || "";
-    fout = tekst === "Failed to fetch" ? "De server antwoordde niet. Ververs de agenda en kijk of de afspraak er staat." : (tekst || "De afspraak is niet opgeslagen.");
+    fout = /row-level security|permission denied/i.test(tekst)
+      ? "De agenda weigert de afspraak. Draai schema-0027.sql in Supabase en probeer opnieuw."
+      : (tekst === "Failed to fetch" ? "De afspraak is niet opgeslagen. Ververs de pagina en probeer het opnieuw." : (tekst || "De afspraak is niet opgeslagen."));
   }
   teken();
 }
