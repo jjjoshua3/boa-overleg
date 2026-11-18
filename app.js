@@ -232,7 +232,7 @@ function teken() {
     stroom.scrollTop = onderaan ? stroom.scrollHeight : plek;
     const dmvak = document.getElementById("dms");
     if (dmvak) dmvak.innerHTML = dmLijstHtml();
-    bindLicht();
+    bind();
     return;
   }
   getekend = sleutel;
@@ -534,20 +534,19 @@ async function laad() {
 }
 
 async function laadAfspraken() {
-  const { data, error } = await sb.from("boa_afspraak").select("id, titel, omschrijving, start, einde, gemaakt_door, deelnemers, kanaal_id, invite_token, status, gasten").neq("status", "geannuleerd").order("start");
-  if (!error && data) {
-    afspraken = data.filter((a) => a.kanaal_id !== "prive" || a.gemaakt_door === ik?.client_id);
-    return;
+  const direct = await sb.from("boa_afspraak").select("id, titel, omschrijving, start, einde, gemaakt_door, deelnemers, kanaal_id, invite_token, status, gasten").neq("status", "geannuleerd").order("start");
+  let lijst = !direct.error && direct.data?.length ? direct.data : [];
+  if (!lijst.length) {
+    const kaal = await sb.from("boa_afspraak").select("id, titel, omschrijving, start, einde, gemaakt_door, deelnemers, kanaal_id, invite_token, status").neq("status", "geannuleerd").order("start");
+    if (!kaal.error && kaal.data?.length) lijst = kaal.data;
   }
-  const kaal = await sb.from("boa_afspraak").select("id, titel, omschrijving, start, einde, gemaakt_door, deelnemers, kanaal_id, invite_token, status").neq("status", "geannuleerd").order("start");
-  if (!kaal.error && kaal.data) {
-    afspraken = kaal.data.filter((a) => a.kanaal_id !== "prive" || a.gemaakt_door === ik?.client_id);
-    return;
+  if (!lijst.length) {
+    try {
+      const uit = await api({ actie: "agenda-lijst" });
+      if (uit.afspraken?.length) lijst = uit.afspraken;
+    } catch { /* de lijst blijft zoals hij is */ }
   }
-  try {
-    const uit = await api({ actie: "agenda-lijst" });
-    afspraken = uit.afspraken || [];
-  } catch { afspraken = []; }
+  if (lijst.length || !direct.error) afspraken = lijst.filter((a) => a.kanaal_id !== "prive" || a.gemaakt_door === ik?.client_id);
 }
 
 async function maakAfspraak(event) {
@@ -591,6 +590,8 @@ async function maakAfspraak(event) {
     }
     afspraken.unshift(opgeslagen);
     afspraakOpen = opgeslagen.id;
+    agendaWeek = maandagVan(new Date(opgeslagen.start));
+    agendaFilter = isPrive(opgeslagen) ? "prive" : "team";
     afspraakConcept = { titel: "", start: "", einde: "", omschrijving: "", deelnemers: [], gasten: "", soort: "team" };
     agendaMelding = "Afspraak staat in de agenda.";
     try {
