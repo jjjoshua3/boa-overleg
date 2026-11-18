@@ -364,8 +364,10 @@ async function start() {
   const params = new URLSearchParams(location.search);
   const token = params.get("afspraak");
   if (token) {
-    const { data } = await sb.from("boa_afspraak").select("*").eq("invite_token", token).maybeSingle();
-    if (data) { afspraakOpen = data.id; tab = "agenda"; }
+    try {
+      const { data } = await sb.from("boa_afspraak").select("*").eq("invite_token", token).maybeSingle();
+      if (data) { afspraakOpen = data.id; tab = "agenda"; }
+    } catch (e) { /* schema nog niet gedraaid */ }
   }
   const { data } = await sb.auth.getSession();
   const user = data.session?.user;
@@ -474,8 +476,10 @@ async function laad() {
 }
 
 async function laadAfspraken() {
-  const { data, error } = await sb.from("boa_afspraak").select("*").neq("status", "geannuleerd").order("start");
-  if (!error && data) afspraken = data;
+  try {
+    const { data, error } = await sb.from("boa_afspraak").select("*").neq("status", "geannuleerd").order("start");
+    if (!error && data) afspraken = data;
+  } catch (e) { afspraken = []; }
 }
 
 async function maakAfspraak(event) {
@@ -678,6 +682,7 @@ async function sluitCall() {
   await laadKanalen();
 }
 
+window.addEventListener("error", (e) => { document.body.insertAdjacentHTML("beforeend", `<p style="color:#fff;padding:20px">Fout: ${e.message}</p>`); });
 const sessie = await sb.auth.getSession();
 if (sessie.data.session) await start();
 else teken();
