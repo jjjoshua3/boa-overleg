@@ -385,10 +385,11 @@ async function start() {
   if (!ik.medewerker) { teken(); return; }
   const { data: status } = await sb.from("boa_overleg_status").select("status, aanduiding").eq("client_id", ik.client_id).maybeSingle();
   if (status) { ik.status = status.status; ik.aanduiding = status.aanduiding || ""; }
-  await laadKanalen(false);
-  await laadTeam();
-  await laadDms();
-  await laad();
+  try { await laadKanalen(false); } catch {}
+  try { await laadTeam(); } catch {}
+  try { await laadDms(); } catch {}
+  try { await laad(); } catch {}
+  teken();
   if (!live) {
     live = sb.channel("overleg-data")
       .on("postgres_changes", { event: "*", schema: "public", table: "boa_onderwerp" }, plan)
@@ -682,7 +683,13 @@ async function sluitCall() {
   await laadKanalen();
 }
 
-window.addEventListener("error", (e) => { document.body.insertAdjacentHTML("beforeend", `<p style="color:#fff;padding:20px">Fout: ${e.message}</p>`); });
-const sessie = await sb.auth.getSession();
-if (sessie.data.session) await start();
-else teken();
+window.addEventListener("error", (e) => { const el = document.getElementById("app"); if (el) el.innerHTML = `<p style="color:#fff;padding:20px">Fout: ${e.message}</p>`; });
+window.addEventListener("unhandledrejection", (e) => { const el = document.getElementById("app"); if (el) el.innerHTML = `<p style="color:#fff;padding:20px">Fout: ${e.reason?.message || e.reason}</p>`; });
+try {
+  const sessie = await sb.auth.getSession();
+  if (sessie.data.session) await start();
+  else teken();
+} catch (e) {
+  const el = document.getElementById("app");
+  if (el) el.innerHTML = `<p style="color:#fff;padding:20px">Startfout: ${e.message}</p>`;
+}
