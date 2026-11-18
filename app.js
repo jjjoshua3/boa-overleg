@@ -573,7 +573,8 @@ async function maakAfspraak(event) {
     else if (uit.mailfout) fout = `De afspraak staat erin. ${uit.mailfout}`;
     else fout = "De afspraak staat erin. Er is geen uitnodiging verstuurd.";
   } catch (e) {
-    fout = e.message || "De afspraak is niet opgeslagen.";
+    const tekst = e?.message || "";
+    fout = tekst === "Failed to fetch" ? "De server antwoordde niet. De afspraak is misschien wel opgeslagen. Ververs de agenda." : (tekst || "De afspraak is niet opgeslagen.");
   }
   teken();
 }
