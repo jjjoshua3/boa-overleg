@@ -51,6 +51,9 @@ let conceptDm = "";
 let reacties = {};
 let getekend = "";
 let wacht = 0;
+let afspraken = [];
+let afspraakOpen = "";
+let afspraakConcept = { titel: "", start: "", einde: "", omschrijving: "", deelnemers: [] };
 
 function tijd(waarde) {
   return new Date(waarde).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -220,7 +223,7 @@ function teken() {
       <section class="midden">
         <div class="kop"><div class="koprij"><div><h2>${esc(titel)}</h2><p class="sub" style="margin:4px 0 0">${esc(uitleg)}</p><span id="online">${beschikbaar} beschikbaar</span></div>
           ${dmNu ? "" : `<div class="rij"><button class="sec" id="audio" type="button">Start team-call (audio)</button><button class="primair" id="video" type="button">Start video-meeting en schermdelen</button></div>`}</div></div>
-        ${dmNu ? "" : `<div class="tabs"><button class="${tab === "gesprekken" ? "aan" : ""}" data-tab="gesprekken" type="button">Gesprekken</button><button class="${tab === "taken" ? "aan" : ""}" data-tab="taken" type="button">Taken en goedkeuringen</button><button class="${tab === "tickets" ? "aan" : ""}" data-tab="tickets" type="button">Gekoppelde servicedesk-tickets</button></div>`}
+        ${dmNu ? "" : `<div class="tabs"><button class="${tab === "gesprekken" ? "aan" : ""}" data-tab="gesprekken" type="button">Gesprekken</button><button class="${tab === "taken" ? "aan" : ""}" data-tab="taken" type="button">Taken en goedkeuringen</button><button class="${tab === "tickets" ? "aan" : ""}" data-tab="tickets" type="button">Gekoppelde servicedesk-tickets</button><button class="${tab === "agenda" ? "aan" : ""}" data-tab="agenda" type="button">Agenda</button></div>`}
         ${!dmNu && huidig.call_room && !meedoen ? `<div class="call"><span>Vergadering bezig in dit kanaal${huidig.call_door ? ` · gestart door ${esc(huidig.call_door)}` : ""}</span><span class="rij"><button id="mee" type="button">Nu deelnemen</button><button id="sluit" type="button">Voor iedereen sluiten</button></span></div>` : ""}
         ${!dmNu && meedoen && huidig.call_room ? `<div class="hostbalk"><button class="sec" id="weg" type="button">Verlaten</button><button class="sec" id="sluit" type="button">Voor iedereen sluiten</button><button class="primair" id="deel" type="button">Kopieer link voor de klant</button><span class="zacht">Eigen vergadering. Jij bent meteen binnen. De klant wacht tot jij gestart bent.</span></div><div id="gesprek"></div>` : ""}
         <div class="stroom">${fout ? `<p class="fout">${esc(fout)}</p>` : ""}${inhoud()}</div>
@@ -235,6 +238,7 @@ function inhoud() {
   if (modus === "dm") {
     return dmBerichten.map((bericht) => `<div class="bericht"><b>${esc(publiekeNaam(bericht.maker_id))}</b> <small>${tijd(bericht.created_at)}</small><div>${esc(bericht.tekst)}</div></div>`).join("") || `<p class="zacht">Nog niets. Stuur het eerste bericht.</p>`;
   }
+  if (tab === "agenda") { await laadAfspraken(); teken(); return; }
   if (tab === "taken") {
     return taken.length ? taken.map((rij) => `<article class="draad"><span class="label">TER CONTROLE</span> <b>${esc(rij.titel)}</b><p>${rij.soort === "boom" ? "Beslisboom" : "Feitcode"} · ${esc(rij.sleutel)} · voorgelegd door ${esc(rij.indiener)}</p>${ik.rol === "beheerder" ? `<button class="primair" data-keur="${esc(rij.id)}" type="button">Goedkeuren en op boaportaal.nl zetten</button>` : `<p class="zacht">Wacht op de hoofdbeheerder.</p>`}</article>`).join("") : `<p class="zacht">Er ligt niets ter goedkeuring.</p>`;
   }
@@ -242,7 +246,29 @@ function inhoud() {
     const tickets = berichten.filter((rij) => rij.kaart?.type === "ticket");
     return tickets.length ? tickets.map((rij) => `<article class="draad"><b>${esc(rij.kaart.nummer)}</b>${kaartHtml(rij.kaart)}<small>Gekoppeld door ${esc(publiekeNaam(rij.maker_id))}</small></article>`).join("") : `<p class="zacht">Nog geen ticket gekoppeld in dit kanaal.</p>`;
   }
+  if (tab === "agenda") return agendaHtml();
   return onderwerpen.map(draadHtml).join("") || `<p class="zacht">Nog geen gesprek. Begin onderaan een onderwerp.</p>`;
+}
+
+function agendaHtml() {
+  const nu = new Date();
+  const komend = afspraken.filter((a) => new Date(a.einde) >= nu && a.status !== "geannuleerd").sort((a, b) => new Date(a.start) - new Date(b.start));
+  const open = afspraken.find((a) => a.id === afspraakOpen);
+  const form = `<form class="kaart" id="afspraak-form" style="margin-bottom:16px">
+    <h3 style="margin:0 0 8px">Nieuwe afspraak</h3>
+    <label>Titel<input name="titel" required value="${esc(afspraakConcept.titel)}"></label>
+    <div class="rij"><label>Start<input name="start" type="datetime-local" required value="${esc(afspraakConcept.start)}"></label><label>Einde<input name="einde" type="datetime-local" required value="${esc(afspraakConcept.einde)}"></label></div>
+    <label>Omschrijving<textarea name="omschrijving">${esc(afspraakConcept.omschrijving)}</textarea></label>
+    <label>Deelnemers (Client-IDs, komma)<input name="deelnemers" placeholder="BP-0001-AB, BP-0002-CD" value="${esc(afspraakConcept.deelnemers.join(", "))}"></label>
+    <button class="primair" type="submit">Inplannen en link maken</button>
+  </form>`;
+  const lijst = komend.length ? komend.map((a) => `<article class="draad" data-afspraak="${esc(a.id)}" style="cursor:pointer">
+    <b>${esc(a.titel)}</b><br><small>${tijd(a.start)} – ${tijd(a.einde)}</small>
+    <p style="margin:6px 0 0">${esc(a.omschrijving || "")}</p>
+    <small>Door ${esc(publiekeNaam(a.gemaakt_door))}${a.deelnemers?.length ? " · " + a.deelnemers.map(publiekeNaam).join(", ") : ""}</small>
+    ${open && open.id === a.id ? `<div style="margin-top:8px"><button class="sec" data-kopieer="${esc(a.invite_token)}" type="button">Kopieer uitnodigingslink</button> <button class="sec" data-ics="${esc(a.id)}" type="button">Download .ics</button> ${a.gemaakt_door === ik.client_id ? `<button class="sec" data-annuleer="${esc(a.id)}" type="button">Annuleren</button>` : ""}</div>` : ""}
+  </article>`).join("") : `<p class="zacht">Nog geen afspraken. Plan er een in.</p>`;
+  return form + lijst;
 }
 
 function composer() {
@@ -281,6 +307,11 @@ function bind() {
   document.getElementById("uit").onclick = afmelden;
   document.getElementById("nacht")?.addEventListener("click", wisselNacht);
   document.querySelectorAll("[data-kanaal]").forEach((knop) => knop.onclick = () => { modus = "kanaal"; kanaal = knop.dataset.kanaal; openId = ""; meedoen = false; tab = "gesprekken"; laad(); });
+  document.getElementById("afspraak-form")?.addEventListener("submit", maakAfspraak);
+  document.querySelectorAll("[data-afspraak]").forEach((kaart) => kaart.onclick = (e) => { if (e.target.closest("button")) return; afspraakOpen = afspraakOpen === kaart.dataset.afspraak ? "" : kaart.dataset.afspraak; teken(); });
+  document.querySelectorAll("[data-kopieer]").forEach((knop) => knop.onclick = async (e) => { e.stopPropagation(); const link = "https://overleg.boaportaal.nl/?afspraak=" + knop.dataset.kopieer; try { await navigator.clipboard.writeText(link); knop.textContent = "Gekopieerd"; setTimeout(() => knop.textContent = "Kopieer uitnodigingslink", 1500); } catch { alert(link); } });
+  document.querySelectorAll("[data-ics]").forEach((knop) => knop.onclick = (e) => { e.stopPropagation(); const a = afspraken.find(x => x.id === knop.dataset.ics); if (a) icsVan(a); });
+  document.querySelectorAll("[data-annuleer]").forEach((knop) => knop.onclick = async (e) => { e.stopPropagation(); if (!confirm("Annuleren?")) return; await sb.from("boa_afspraak").update({ status: "geannuleerd" }).eq("id", knop.dataset.annuleer); afspraken = afspraken.filter(x => x.id !== knop.dataset.annuleer); teken(); });
   document.querySelectorAll("[data-tab]").forEach((knop) => knop.onclick = async () => {
     modus = "kanaal";
     tab = knop.dataset.tab;
@@ -330,6 +361,12 @@ async function afmelden() {
 }
 
 async function start() {
+  const params = new URLSearchParams(location.search);
+  const token = params.get("afspraak");
+  if (token) {
+    const { data } = await sb.from("boa_afspraak").select("*").eq("invite_token", token).maybeSingle();
+    if (data) { afspraakOpen = data.id; tab = "agenda"; }
+  }
   const { data } = await sb.auth.getSession();
   const user = data.session?.user;
   if (!user) { ik = null; teken(); return; }
@@ -358,6 +395,7 @@ async function start() {
       .on("postgres_changes", { event: "*", schema: "public", table: "boa_kanaal" }, () => laadKanalen())
       .on("postgres_changes", { event: "*", schema: "public", table: "boa_dm" }, laadDms)
       .on("postgres_changes", { event: "*", schema: "public", table: "boa_dm_bericht" }, plan)
+      .on("postgres_changes", { event: "*", schema: "public", table: "boa_afspraak" }, () => { if (tab === "agenda") laadAfspraken().then(teken); })
       .subscribe();
     kamer = sb.channel("overleg-aanwezig");
     kamer.on("presence", { event: "sync" }, () => {
@@ -433,6 +471,56 @@ async function laad() {
   bezig = false;
   teken();
   if (opnieuw) { opnieuw = false; await laad(); }
+}
+
+async function laadAfspraken() {
+  const { data, error } = await sb.from("boa_afspraak").select("*").neq("status", "geannuleerd").order("start");
+  if (!error && data) afspraken = data;
+}
+
+async function maakAfspraak(event) {
+  event.preventDefault();
+  const f = new FormData(event.target);
+  const titel = String(f.get("titel") || "").trim();
+  const start = f.get("start");
+  const einde = f.get("einde");
+  const omschrijving = String(f.get("omschrijving") || "").trim();
+  const deelnemers = String(f.get("deelnemers") || "").split(",").map(s => s.trim()).filter(Boolean);
+  if (!titel || !start || !einde) return;
+  const { data, error } = await sb.from("boa_afspraak").insert({
+    titel, omschrijving, start: new Date(start).toISOString(), einde: new Date(einde).toISOString(),
+    gemaakt_door: ik.client_id, deelnemers, kanaal_id: kanaal
+  }).select().single();
+  if (error) { fout = "Afspraak niet opgeslagen. Draai schema-0025.sql."; teken(); return; }
+  afspraken.unshift(data);
+  afspraakOpen = data.id;
+  afspraakConcept = { titel: "", start: "", einde: "", omschrijving: "", deelnemers: [] };
+  fout = "";
+  teken();
+}
+
+function icsVan(a) {
+  const pad = (n) => String(n).padStart(2, "0");
+  const dt = (d) => { const x = new Date(d); return x.getUTCFullYear() + pad(x.getUTCMonth()+1) + pad(x.getUTCDate()) + "T" + pad(x.getUTCHours()) + pad(x.getUTCMinutes()) + pad(x.getUTCSeconds()) + "Z"; };
+  const body = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//BOA Portaal//Overleg//NL
+BEGIN:VEVENT
+UID:${a.id}@overleg.boaportaal.nl
+DTSTAMP:${dt(new Date())}
+DTSTART:${dt(a.start)}
+DTEND:${dt(a.einde)}
+SUMMARY:${a.titel.replace(/\n/g, " ")}
+DESCRIPTION:${(a.omschrijving || "").replace(/\n/g, "\\n")}
+URL:https://overleg.boaportaal.nl/?afspraak=${a.invite_token}
+END:VEVENT
+END:VCALENDAR`;
+  const blob = new Blob([body], { type: "text/calendar" });
+  const url = URL.createObjectURL(blob);
+  const ael = document.createElement("a");
+  ael.href = url; ael.download = a.titel.replace(/[^a-z0-9]/gi, "_") + ".ics";
+  ael.click();
+  URL.revokeObjectURL(url);
 }
 
 async function laadDm() {
