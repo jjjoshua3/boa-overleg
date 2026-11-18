@@ -312,7 +312,7 @@ function bind() {
   document.querySelectorAll("[data-afspraak]").forEach((kaart) => kaart.onclick = (e) => { if (e.target.closest("button, input, textarea, label, select")) return; afspraakOpen = afspraakOpen === kaart.dataset.afspraak ? "" : kaart.dataset.afspraak; teken(); });
   document.querySelectorAll("[data-kopieer]").forEach((knop) => knop.onclick = async (e) => { e.stopPropagation(); const link = "https://overleg.boaportaal.nl/?afspraak=" + knop.dataset.kopieer; try { await navigator.clipboard.writeText(link); knop.textContent = "Gekopieerd"; setTimeout(() => knop.textContent = "Kopieer uitnodigingslink", 1500); } catch { alert(link); } });
   document.querySelectorAll("[data-ics]").forEach((knop) => knop.onclick = (e) => { e.stopPropagation(); const a = afspraken.find(x => x.id === knop.dataset.ics); if (a) icsVan(a); });
-  document.querySelectorAll("[data-annuleer]").forEach((knop) => knop.onclick = async (e) => { e.stopPropagation(); if (!confirm("Annuleren? De genodigden krijgen dan een afmelding in hun agenda.")) return; await sb.from("boa_afspraak").update({ status: "geannuleerd" }).eq("id", knop.dataset.annuleer); try { await api({ actie: "agenda-weg", id: knop.dataset.annuleer }); } catch {} afspraken = afspraken.filter(x => x.id !== knop.dataset.annuleer); teken(); });
+  document.querySelectorAll("[data-annuleer]").forEach((knop) => knop.onclick = async (e) => { e.stopPropagation(); if (!confirm("Annuleren? De genodigden krijgen dan een afmelding in hun agenda.")) return; try { await api({ actie: "agenda-weg", id: knop.dataset.annuleer }); } catch {} afspraken = afspraken.filter(x => x.id !== knop.dataset.annuleer); teken(); });
   document.querySelectorAll("[data-stuur]").forEach((knop) => knop.onclick = (e) => { e.stopPropagation(); stuurUitnodiging(knop.dataset.stuur); });
   document.querySelectorAll("[data-tab]").forEach((knop) => knop.onclick = async () => {
     modus = "kanaal";
@@ -483,8 +483,8 @@ async function laad() {
 
 async function laadAfspraken() {
   try {
-    const { data, error } = await sb.from("boa_afspraak").select("*").neq("status", "geannuleerd").order("start");
-    if (!error && data) afspraken = data;
+    const uit = await api({ actie: "agenda-lijst" });
+    afspraken = uit.afspraken || [];
   } catch (e) { afspraken = []; }
 }
 
@@ -498,22 +498,29 @@ async function maakAfspraak(event) {
   const deelnemers = [...(event.target.querySelector("[name=deelnemers]")?.selectedOptions || [])].map(o => o.value);
   const gasten = String(f.get("gasten") || "").trim();
   if (!titel || !start || !einde) return;
-  const { data, error } = await sb.from("boa_afspraak").insert({
-    titel, omschrijving, start: new Date(start).toISOString(), einde: new Date(einde).toISOString(),
-    gemaakt_door: ik.client_id, deelnemers, kanaal_id: kanaal
-  }).select().single();
-  if (error) { fout = "Afspraak niet opgeslagen. Draai schema-0025.sql."; teken(); return; }
-  afspraken.unshift(data);
-  afspraakOpen = data.id;
-  afspraakConcept = { titel: "", start: "", einde: "", omschrijving: "", deelnemers: [], gasten: "" };
   fout = "";
   agendaMelding = "";
   try {
-    const uit = await api({ actie: "agenda", id: data.id, gasten });
-    agendaMelding = uit.naar?.length ? `Uitnodiging gestuurd naar ${uit.naar.join(", ")}.` : "Afspraak staat in de agenda. Er is geen mailadres verstuurd.";
-    data.gasten = uit.naar || [];
+    const uit = await api({
+      actie: "agenda-nieuw",
+      titel,
+      start: new Date(start).toISOString(),
+      einde: new Date(einde).toISOString(),
+      omschrijving,
+      deelnemers,
+      gasten,
+      kanaal,
+    });
+    if (uit.afspraak) {
+      afspraken.unshift(uit.afspraak);
+      afspraakOpen = uit.afspraak.id;
+    }
+    afspraakConcept = { titel: "", start: "", einde: "", omschrijving: "", deelnemers: [], gasten: "" };
+    if (uit.naar?.length) agendaMelding = `Uitnodiging gestuurd naar ${uit.naar.join(", ")}.`;
+    else if (uit.mailfout) fout = `De afspraak staat erin. ${uit.mailfout}`;
+    else fout = "De afspraak staat erin. Er is geen uitnodiging verstuurd.";
   } catch (e) {
-    fout = e.message || "De afspraak staat erin. De uitnodiging is niet verstuurd.";
+    fout = e.message || "De afspraak is niet opgeslagen.";
   }
   teken();
 }
