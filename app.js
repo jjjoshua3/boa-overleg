@@ -259,7 +259,7 @@ function agendaHtml() {
     <label>Titel<input name="titel" required value="${esc(afspraakConcept.titel)}"></label>
     <div class="rij"><label>Start<input name="start" type="datetime-local" required value="${esc(afspraakConcept.start)}"></label><label>Einde<input name="einde" type="datetime-local" required value="${esc(afspraakConcept.einde)}"></label></div>
     <label>Omschrijving<textarea name="omschrijving">${esc(afspraakConcept.omschrijving)}</textarea></label>
-    <label>Deelnemers (Client-IDs, komma)<input name="deelnemers" placeholder="BP-0001-AB, BP-0002-CD" value="${esc(afspraakConcept.deelnemers.join(", "))}"></label>
+    <label>Deelnemers<select name="deelnemers" multiple size="5" style="min-height:90px">${team.map(r => `<option value="${esc(r.client_id)}" ${afspraakConcept.deelnemers.includes(r.client_id) ? "selected" : ""}>${esc(r.naam || r.client_id)} · ${esc(r.client_id)}</option>`).join("")}</select><small class="zacht">Ctrl of Cmd ingedrukt houden voor meerdere. Alleen medewerkers die in systeem staan.</small></label>
     <button class="primair" type="submit">Inplannen en link maken</button>
   </form>`;
   const lijst = komend.length ? komend.map((a) => `<article class="draad" data-afspraak="${esc(a.id)}" style="cursor:pointer">
@@ -485,7 +485,7 @@ async function maakAfspraak(event) {
   const start = f.get("start");
   const einde = f.get("einde");
   const omschrijving = String(f.get("omschrijving") || "").trim();
-  const deelnemers = String(f.get("deelnemers") || "").split(",").map(s => s.trim()).filter(Boolean);
+  const deelnemers = [...(event.target.querySelector("[name=deelnemers]")?.selectedOptions || [])].map(o => o.value);
   if (!titel || !start || !einde) return;
   const { data, error } = await sb.from("boa_afspraak").insert({
     titel, omschrijving, start: new Date(start).toISOString(), einde: new Date(einde).toISOString(),
