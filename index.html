@@ -86,10 +86,21 @@
     .persoon { padding: 8px 10px; margin-bottom: 8px; }
     .stip { width: 8px; height: 8px; border-radius: 99px; display: inline-block; margin-right: 6px; }
     .ticketkaart, .voorstelkaart { padding: 8px 10px; margin-top: 6px; background: var(--inset); }
+    .weekbalk { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+    .week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-bottom: 16px; }
+    .dag { background: var(--panel); border: 1px solid var(--line); min-height: 128px; padding: 6px; }
+    .dag.vandaag { outline: 2px solid var(--accent); }
+    .dagkop { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .afspraakblok { display: block; width: 100%; text-align: left; border: 0; border-radius: 2px; padding: 4px 6px; margin: 0 0 4px; font-size: 12px; line-height: 1.3; cursor: pointer; }
+    .afspraakblok.team { background: #dbeafe; color: #1e3a8a; }
+    .afspraakblok.prive { background: #fef3c7; color: #92400e; }
+    html.night .afspraakblok.team { background: #1e3a5f; color: #dbeafe; }
+    html.night .afspraakblok.prive { background: #3f2e12; color: #fde68a; }
     @media (max-width: 980px) {
       .werk { height: auto; grid-template-columns: 1fr; }
       .beeld { height: calc(100vh - 160px); }
       .mensen, .kanalen { border: 0; }
+      .week { grid-template-columns: 1fr; }
     }
   </style>
 </head>
