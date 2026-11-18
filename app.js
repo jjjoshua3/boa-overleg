@@ -577,7 +577,7 @@ async function maakAfspraak(event) {
     } catch (e) {
       const tekst = e?.message || "";
       fout = tekst === "Failed to fetch"
-        ? "De afspraak staat in de agenda. De mail is niet weg. Die gaat vanaf onboarding@boaportaal.nl. Zet PURELYMAIL_ONBOARDING_PASSWORD bij de Netlify-site van systeem."
+        ? "De afspraak staat in de agenda. De mail is niet weg. Die gaat vanaf afspraak@boaportaal.nl. Zet PURELYMAIL_AFSPRAAK_PASSWORD bij de Netlify-site van systeem."
         : `De afspraak staat in de agenda. ${tekst}`;
     }
   } catch (e) {
