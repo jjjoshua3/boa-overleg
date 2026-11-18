@@ -53,7 +53,8 @@ let getekend = "";
 let wacht = 0;
 let afspraken = [];
 let afspraakOpen = "";
-let afspraakConcept = { titel: "", start: "", einde: "", omschrijving: "", deelnemers: [] };
+let afspraakConcept = { titel: "", start: "", einde: "", omschrijving: "", deelnemers: [], gasten: "" };
+let agendaMelding = "";
 
 function tijd(waarde) {
   return new Date(waarde).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -258,16 +259,17 @@ function agendaHtml() {
     <label>Titel<input name="titel" required value="${esc(afspraakConcept.titel)}"></label>
     <div class="rij"><label>Start<input name="start" type="datetime-local" required value="${esc(afspraakConcept.start)}"></label><label>Einde<input name="einde" type="datetime-local" required value="${esc(afspraakConcept.einde)}"></label></div>
     <label>Omschrijving<textarea name="omschrijving">${esc(afspraakConcept.omschrijving)}</textarea></label>
-    <label>Deelnemers<select name="deelnemers" multiple size="5" style="min-height:90px">${team.map(r => `<option value="${esc(r.client_id)}" ${afspraakConcept.deelnemers.includes(r.client_id) ? "selected" : ""}>${esc(r.naam || r.client_id)} · ${esc(r.client_id)}</option>`).join("")}</select><small class="zacht">Ctrl of Cmd ingedrukt houden voor meerdere. Alleen medewerkers die in systeem staan.</small></label>
-    <button class="primair" type="submit">Inplannen en link maken</button>
+    <label>Deelnemers<select name="deelnemers" multiple size="5" style="min-height:90px">${team.map(r => `<option value="${esc(r.client_id)}" ${afspraakConcept.deelnemers.includes(r.client_id) ? "selected" : ""}>${esc(r.naam || r.client_id)} · ${esc(r.client_id)}</option>`).join("")}</select><small class="zacht">Ctrl of Cmd ingedrukt houden voor meerdere. Hun loginmail krijgt de uitnodiging.</small></label>
+    <label>Mailadressen, ook extern<textarea name="gasten" placeholder="naam@gemeente.nl, iemand@gmail.com">${esc(afspraakConcept.gasten)}</textarea><small class="zacht">Zij krijgen een agenda-uitnodiging. Accepteren zet de afspraak in hun agenda.</small></label>
+    <button class="primair" type="submit">Inplannen en uitnodiging sturen</button>
   </form>`;
   const lijst = komend.length ? komend.map((a) => `<article class="draad" data-afspraak="${esc(a.id)}" style="cursor:pointer">
     <b>${esc(a.titel)}</b><br><small>${tijd(a.start)} – ${tijd(a.einde)}</small>
     <p style="margin:6px 0 0">${esc(a.omschrijving || "")}</p>
-    <small>Door ${esc(publiekeNaam(a.gemaakt_door))}${a.deelnemers?.length ? " · " + a.deelnemers.map(publiekeNaam).join(", ") : ""}</small>
-    ${open && open.id === a.id ? `<div style="margin-top:8px"><button class="sec" data-kopieer="${esc(a.invite_token)}" type="button">Kopieer uitnodigingslink</button> <button class="sec" data-ics="${esc(a.id)}" type="button">Download .ics</button> ${a.gemaakt_door === ik.client_id ? `<button class="sec" data-annuleer="${esc(a.id)}" type="button">Annuleren</button>` : ""}</div>` : ""}
+    <small>Door ${esc(publiekeNaam(a.gemaakt_door))}${a.deelnemers?.length ? " · " + a.deelnemers.map(publiekeNaam).join(", ") : ""}${a.gasten?.length ? " · " + a.gasten.join(", ") : ""}</small>
+    ${open && open.id === a.id ? `<div style="margin-top:8px"><label>Extra mailadressen<input data-extra="${esc(a.id)}" placeholder="nog-iemand@gemeente.nl"></label><button class="primair" data-stuur="${esc(a.id)}" type="button">Uitnodiging sturen</button> <button class="sec" data-kopieer="${esc(a.invite_token)}" type="button">Kopieer link</button> <button class="sec" data-ics="${esc(a.id)}" type="button">Download .ics</button> ${a.gemaakt_door === ik.client_id ? `<button class="sec" data-annuleer="${esc(a.id)}" type="button">Annuleren</button>` : ""}</div>` : ""}
   </article>`).join("") : `<p class="zacht">Nog geen afspraken. Plan er een in.</p>`;
-  return form + lijst;
+  return (agendaMelding ? `<p style="color:#15803d">${esc(agendaMelding)}</p>` : "") + form + lijst;
 }
 
 function composer() {
@@ -307,10 +309,11 @@ function bind() {
   document.getElementById("nacht")?.addEventListener("click", wisselNacht);
   document.querySelectorAll("[data-kanaal]").forEach((knop) => knop.onclick = () => { modus = "kanaal"; kanaal = knop.dataset.kanaal; openId = ""; meedoen = false; tab = "gesprekken"; laad(); });
   document.getElementById("afspraak-form")?.addEventListener("submit", maakAfspraak);
-  document.querySelectorAll("[data-afspraak]").forEach((kaart) => kaart.onclick = (e) => { if (e.target.closest("button")) return; afspraakOpen = afspraakOpen === kaart.dataset.afspraak ? "" : kaart.dataset.afspraak; teken(); });
+  document.querySelectorAll("[data-afspraak]").forEach((kaart) => kaart.onclick = (e) => { if (e.target.closest("button, input, textarea, label, select")) return; afspraakOpen = afspraakOpen === kaart.dataset.afspraak ? "" : kaart.dataset.afspraak; teken(); });
   document.querySelectorAll("[data-kopieer]").forEach((knop) => knop.onclick = async (e) => { e.stopPropagation(); const link = "https://overleg.boaportaal.nl/?afspraak=" + knop.dataset.kopieer; try { await navigator.clipboard.writeText(link); knop.textContent = "Gekopieerd"; setTimeout(() => knop.textContent = "Kopieer uitnodigingslink", 1500); } catch { alert(link); } });
   document.querySelectorAll("[data-ics]").forEach((knop) => knop.onclick = (e) => { e.stopPropagation(); const a = afspraken.find(x => x.id === knop.dataset.ics); if (a) icsVan(a); });
-  document.querySelectorAll("[data-annuleer]").forEach((knop) => knop.onclick = async (e) => { e.stopPropagation(); if (!confirm("Annuleren?")) return; await sb.from("boa_afspraak").update({ status: "geannuleerd" }).eq("id", knop.dataset.annuleer); afspraken = afspraken.filter(x => x.id !== knop.dataset.annuleer); teken(); });
+  document.querySelectorAll("[data-annuleer]").forEach((knop) => knop.onclick = async (e) => { e.stopPropagation(); if (!confirm("Annuleren? De genodigden krijgen dan een afmelding in hun agenda.")) return; await sb.from("boa_afspraak").update({ status: "geannuleerd" }).eq("id", knop.dataset.annuleer); try { await api({ actie: "agenda-weg", id: knop.dataset.annuleer }); } catch {} afspraken = afspraken.filter(x => x.id !== knop.dataset.annuleer); teken(); });
+  document.querySelectorAll("[data-stuur]").forEach((knop) => knop.onclick = (e) => { e.stopPropagation(); stuurUitnodiging(knop.dataset.stuur); });
   document.querySelectorAll("[data-tab]").forEach((knop) => knop.onclick = async () => {
     modus = "kanaal";
     tab = knop.dataset.tab;
@@ -493,6 +496,7 @@ async function maakAfspraak(event) {
   const einde = f.get("einde");
   const omschrijving = String(f.get("omschrijving") || "").trim();
   const deelnemers = [...(event.target.querySelector("[name=deelnemers]")?.selectedOptions || [])].map(o => o.value);
+  const gasten = String(f.get("gasten") || "").trim();
   if (!titel || !start || !einde) return;
   const { data, error } = await sb.from("boa_afspraak").insert({
     titel, omschrijving, start: new Date(start).toISOString(), einde: new Date(einde).toISOString(),
@@ -501,8 +505,31 @@ async function maakAfspraak(event) {
   if (error) { fout = "Afspraak niet opgeslagen. Draai schema-0025.sql."; teken(); return; }
   afspraken.unshift(data);
   afspraakOpen = data.id;
-  afspraakConcept = { titel: "", start: "", einde: "", omschrijving: "", deelnemers: [] };
+  afspraakConcept = { titel: "", start: "", einde: "", omschrijving: "", deelnemers: [], gasten: "" };
   fout = "";
+  agendaMelding = "";
+  try {
+    const uit = await api({ actie: "agenda", id: data.id, gasten });
+    agendaMelding = uit.naar?.length ? `Uitnodiging gestuurd naar ${uit.naar.join(", ")}.` : "Afspraak staat in de agenda. Er is geen mailadres verstuurd.";
+    data.gasten = uit.naar || [];
+  } catch (e) {
+    fout = e.message || "De afspraak staat erin. De uitnodiging is niet verstuurd.";
+  }
+  teken();
+}
+
+async function stuurUitnodiging(id) {
+  const extra = document.querySelector(`[data-extra="${id}"]`)?.value || "";
+  agendaMelding = "";
+  fout = "";
+  try {
+    const uit = await api({ actie: "agenda", id, gasten: extra });
+    agendaMelding = uit.naar?.length ? `Uitnodiging gestuurd naar ${uit.naar.join(", ")}.` : "Geen mailadres verstuurd.";
+    const rij = afspraken.find((a) => a.id === id);
+    if (rij && uit.naar) rij.gasten = uit.naar;
+  } catch (e) {
+    fout = e.message || "De uitnodiging is niet verstuurd.";
+  }
   teken();
 }
 
