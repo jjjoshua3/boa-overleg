@@ -54,7 +54,7 @@ let wacht = 0;
 let afspraken = [];
 let afspraakOpen = "";
 let afspraakConcept = { titel: "", start: "", einde: "", omschrijving: "", deelnemers: [], gasten: "", soort: "team" };
-let agendaMelding = "";
+let agendaCall = "";
 let agendaFilter = "alles";
 let agendaWeek = maandagVan(new Date());
 
@@ -222,7 +222,7 @@ function teken() {
   const uitleg = dmNu ? "1 op 1. Alleen jullie twee zien dit." : huidig.omschrijving;
   const online = mensen();
   const beschikbaar = online.filter((persoon) => persoon.status !== "afwezig").length;
-  const sleutel = `${modus}|${kanaal}|${dmId}|${tab}|${meedoen}|${paneel}|${huidig.call_room}|${document.documentElement.classList.contains("night")}|${agendaFilter}|${agendaWeek.getTime()}|${afspraakOpen}`;
+  const sleutel = `${modus}|${kanaal}|${dmId}|${tab}|${meedoen}|${paneel}|${huidig.call_room}|${document.documentElement.classList.contains("night")}|${agendaFilter}|${agendaWeek.getTime()}|${afspraakOpen}|${agendaCall}`;
   if (sleutel === getekend && document.getElementById("stroom")) {
     const stroom = document.getElementById("stroom");
     const onderaan = stroom.scrollHeight - stroom.scrollTop - stroom.clientHeight < 48;
@@ -245,6 +245,7 @@ function teken() {
         ${dmNu ? "" : `<div class="tabs"><button class="${tab === "gesprekken" ? "aan" : ""}" data-tab="gesprekken" type="button">Gesprekken</button><button class="${tab === "taken" ? "aan" : ""}" data-tab="taken" type="button">Taken en goedkeuringen</button><button class="${tab === "tickets" ? "aan" : ""}" data-tab="tickets" type="button">Gekoppelde servicedesk-tickets</button><button class="${tab === "agenda" ? "aan" : ""}" data-tab="agenda" type="button">Agenda</button></div>`}
         ${!dmNu && huidig.call_room && !meedoen ? `<div class="call"><span>Vergadering bezig in dit kanaal${huidig.call_door ? ` · gestart door ${esc(huidig.call_door)}` : ""}</span><span class="rij"><button id="mee" type="button">Nu deelnemen</button><button id="sluit" type="button">Voor iedereen sluiten</button></span></div>` : ""}
         ${!dmNu && meedoen && huidig.call_room ? `<div class="hostbalk"><button class="sec" id="weg" type="button">Verlaten</button><button class="sec" id="sluit" type="button">Voor iedereen sluiten</button><button class="primair" id="deel" type="button">Kopieer link voor de klant</button><span class="zacht">Eigen vergadering. Jij bent meteen binnen. De klant wacht tot jij gestart bent.</span></div><div id="gesprek"></div>` : ""}
+        ${agendaCall ? `<div class="hostbalk"><button class="sec" id="afspraak-weg" type="button">Call verlaten</button><span class="zacht">Alleen deze afspraak. Een andere call gaat hiermee niet open.</span></div><div id="gesprek-afspraak"></div>` : ""}
         <div class="stroom">${fout ? `<p class="fout">${esc(fout)}</p>` : ""}${inhoud()}</div>
         ${dmNu ? `<form class="composer" id="dm-form"><label>Bericht<textarea id="dm-tekst">${esc(conceptDm)}</textarea></label><button class="primair">Versturen</button></form>` : tab === "gesprekken" ? composer() : ""}
       </section>
@@ -292,7 +293,8 @@ function agendaHtml() {
     <span class="label">${isPrive(open) ? "PRIVÉ" : "GEZAMENLIJK"}</span> <b>${esc(open.titel)}</b><br><small>${tijd(open.start)} – ${tijd(open.einde)}</small>
     <p style="margin:6px 0 0">${esc(open.omschrijving || "")}</p>
     <small>Door ${esc(publiekeNaam(open.gemaakt_door))}${open.deelnemers?.length ? " · " + open.deelnemers.map(publiekeNaam).join(", ") : ""}${open.gasten?.length ? " · " + open.gasten.join(", ") : ""}</small>
-    <div style="margin-top:8px"><a class="primair" href="${esc(belLink(open))}" target="_blank" rel="noopener">Deelnemen aan de call</a> <label>Extra mailadressen<input data-extra="${esc(open.id)}" placeholder="nog-iemand@gemeente.nl"></label><button class="primair" data-stuur="${esc(open.id)}" type="button">Uitnodiging sturen</button> <button class="sec" data-kopieer="${esc(open.invite_token)}" type="button">Kopieer link</button> <button class="sec" data-ics="${esc(open.id)}" type="button">Download .ics</button> ${open.gemaakt_door === ik.client_id ? `<button class="sec" data-annuleer="${esc(open.id)}" type="button">Annuleren</button>` : ""}</div>
+    <div style="margin-top:8px"><button class="primair" type="button" data-join="${esc(open.id)}">Join call</button> <label>Extra mailadressen<input data-extra="${esc(open.id)}" placeholder="nog-iemand@gemeente.nl"></label><button class="primair" data-stuur="${esc(open.id)}" type="button">Uitnodiging sturen</button> <button class="sec" data-kopieer="${esc(open.invite_token)}" type="button">Kopieer link</button> <button class="sec" data-ics="${esc(open.id)}" type="button">Download .ics</button> ${open.gemaakt_door === ik.client_id ? `<button class="sec" data-annuleer="${esc(open.id)}" type="button">Annuleren</button>` : ""}</div>
+    <p class="zacht">Join call en de link in de mail openen alleen deze afspraak.</p>
   </article>` : "";
   return `<div class="weekbalk"><button class="sec" type="button" data-week="-1">Vorige week</button><b>${esc(titel)}</b><button class="sec" type="button" data-week="1">Volgende week</button><button class="sec" type="button" data-week="0">Deze week</button>${filters}</div>
     <p class="zacht">Blauw is gezamenlijk, voor het hele team. Geel is privé, alleen jij ziet die.</p>
@@ -302,10 +304,15 @@ function agendaHtml() {
     ${form}`;
 }
 
+function belRoom(afspraak) {
+  const ruw = String(afspraak?.invite_token || afspraak?.id || "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+  if (ruw.length < 12) return "";
+  return `boaaf${ruw}`.slice(0, 48);
+}
+
 function belLink(afspraak) {
-  const ruw = String(afspraak?.invite_token || afspraak?.id || "").replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 40);
-  const room = `boa${ruw}`.slice(0, 48);
-  if (!/^boa[a-z0-9]{10,45}$/.test(room)) return "https://overleg.boaportaal.nl/";
+  const room = belRoom(afspraak);
+  if (!room) return "";
   return `https://overleg.boaportaal.nl/gast.html?room=${room}&direct=1`;
 }
 
@@ -392,6 +399,14 @@ function bind() {
   document.getElementById("stel-voor")?.addEventListener("click", () => { paneel = paneel === "voorstel" ? "" : "voorstel"; teken(); });
   document.getElementById("zoek-ticket")?.addEventListener("click", zoekTicket);
   document.getElementById("leg-voor")?.addEventListener("click", legVoor);
+  document.querySelectorAll("[data-join]").forEach((knop) => knop.onclick = () => {
+    stopGesprek();
+    meedoen = false;
+    agendaCall = knop.dataset.join;
+    afspraakOpen = agendaCall;
+    teken();
+  });
+  document.getElementById("afspraak-weg")?.addEventListener("click", () => { stopGesprek(); agendaCall = ""; teken(); });
   document.getElementById("audio")?.addEventListener("click", () => startCall(false));
   document.getElementById("video")?.addEventListener("click", () => startCall(true));
   document.getElementById("mee")?.addEventListener("click", () => { callVideo = true; meedoen = true; teken(); });
@@ -400,6 +415,15 @@ function bind() {
   document.getElementById("deel")?.addEventListener("click", deelKlant);
   document.getElementById("status")?.addEventListener("change", bewaarStatus);
   document.getElementById("aanduiding")?.addEventListener("change", bewaarStatus);
+  const afspraakVak = document.getElementById("gesprek-afspraak");
+  if (afspraakVak && !afspraakVak.dataset.aan) {
+    const afspraak = afspraken.find((a) => a.id === agendaCall);
+    const room = afspraak && belRoom(afspraak);
+    if (room) {
+      afspraakVak.dataset.aan = "1";
+      startGesprek(afspraakVak, { room, naam: publiekeNaam(), video: true });
+    }
+  }
   const vak = document.getElementById("gesprek");
   if (vak && !vak.dataset.aan) {
     vak.dataset.aan = "1";
@@ -790,6 +814,7 @@ async function keur(id) {
 }
 
 async function startCall(video) {
+  if (agendaCall) { stopGesprek(); agendaCall = ""; }
   const huidig = kanalen.find((rij) => rij.id === kanaal);
   let room = huidig?.call_room || "";
   if (!room) {
