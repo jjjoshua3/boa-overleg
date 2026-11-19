@@ -247,7 +247,7 @@ function teken() {
         ${dmNu ? "" : `<div class="tabs"><button class="${tab === "gesprekken" ? "aan" : ""}" data-tab="gesprekken" type="button">Gesprekken</button><button class="${tab === "taken" ? "aan" : ""}" data-tab="taken" type="button">Taken en goedkeuringen</button><button class="${tab === "tickets" ? "aan" : ""}" data-tab="tickets" type="button">Gekoppelde servicedesk-tickets</button><button class="${tab === "agenda" ? "aan" : ""}" data-tab="agenda" type="button">Agenda</button></div>`}
         ${!dmNu && huidig.call_room && !meedoen ? `<div class="call"><span>Vergadering bezig in dit kanaal${huidig.call_door ? ` · gestart door ${esc(huidig.call_door)}` : ""}</span><span class="rij"><button id="mee" type="button">Nu deelnemen</button><button id="sluit" type="button">Voor iedereen sluiten</button></span></div>` : ""}
         ${!dmNu && meedoen && huidig.call_room ? `<div class="hostbalk"><button class="sec" id="weg" type="button">Verlaten</button><button class="sec" id="sluit" type="button">Voor iedereen sluiten</button><button class="primair" id="deel" type="button">Kopieer link voor de klant</button><span class="zacht">Eigen vergadering. Jij bent meteen binnen. De klant wacht tot jij gestart bent.</span></div><div id="gesprek"></div>` : ""}
-        ${agendaCall ? `<div class="hostbalk"><button class="sec" id="afspraak-weg" type="button">Call verlaten</button><span class="zacht">Alleen deze afspraak. Een andere call gaat hiermee niet open.</span></div><div id="gesprek-afspraak"></div>` : ""}
+        ${agendaCall ? `<div class="hostbalk"><button class="sec" id="afspraak-weg" type="button">Call verlaten</button></div><div id="gesprek-afspraak"></div>` : ""}
         <div class="stroom">${fout ? `<p class="fout">${esc(fout)}</p>` : ""}${inhoud()}</div>
         ${dmNu ? `<form class="composer" id="dm-form"><label>Bericht<textarea id="dm-tekst">${esc(conceptDm)}</textarea></label><button class="primair">Versturen</button></form>` : tab === "gesprekken" ? composer() : ""}
       </section>
@@ -473,8 +473,13 @@ async function start() {
     aanduiding: "",
   };
   if (!ik.medewerker) { teken(); return; }
-  const { data: status } = await sb.from("boa_overleg_status").select("status, aanduiding").eq("client_id", ik.client_id).maybeSingle();
-  if (status) { ik.status = status.status; ik.aanduiding = status.aanduiding || ""; }
+  teken();
+  const statusBelofte = sb.from("boa_overleg_status").select("status, aanduiding").eq("client_id", ik.client_id).maybeSingle();
+  const statusUit = await Promise.race([
+    statusBelofte,
+    new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+  ]);
+  if (statusUit?.data) { ik.status = statusUit.data.status; ik.aanduiding = statusUit.data.aanduiding || ""; }
   try { await laadKanalen(false); } catch {}
   try { await laadTeam(); } catch {}
   try { await laadDms(); } catch {}
@@ -508,10 +513,14 @@ function spoor() {
 }
 
 async function bewaarStatus() {
-  ik.status = document.getElementById("status").value;
-  ik.aanduiding = document.getElementById("aanduiding").value.slice(0, 80);
-  await sb.from("boa_overleg_status").upsert({ client_id: ik.client_id, status: ik.status, aanduiding: ik.aanduiding });
-  if (kamer) await kamer.track(spoor());
+  const veld = document.getElementById("status");
+  const aanduiding = document.getElementById("aanduiding");
+  if (!veld) return;
+  ik.status = veld.value;
+  ik.aanduiding = String(aanduiding?.value || "").slice(0, 80);
+  sb.from("boa_overleg_status").upsert({ client_id: ik.client_id, status: ik.status, aanduiding: ik.aanduiding }).then(() => {
+    if (kamer) kamer.track(spoor());
+  }).catch(() => {});
 }
 
 function plan() {
