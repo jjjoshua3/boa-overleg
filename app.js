@@ -287,7 +287,7 @@ function agendaHtml() {
     <label>Titel<input name="titel" required value="${esc(afspraakConcept.titel)}"></label>
     <div class="rij"><label>Start<input name="start" type="datetime-local" required value="${esc(afspraakConcept.start)}"></label><label>Einde<input name="einde" type="datetime-local" required value="${esc(afspraakConcept.einde)}"></label></div>
     <label>Omschrijving<textarea name="omschrijving">${esc(afspraakConcept.omschrijving)}</textarea></label>
-    <label>Deelnemers<select name="deelnemers" multiple size="5" style="min-height:90px">${team.map(r => `<option value="${esc(r.client_id)}" ${afspraakConcept.deelnemers.includes(r.client_id) ? "selected" : ""}>${esc(r.naam || r.client_id)} · ${esc(r.client_id)}</option>`).join("")}</select><small class="zacht">Ctrl of Cmd ingedrukt houden voor meerdere. Hun loginmail krijgt de uitnodiging.</small></label>
+    <label>Deelnemers<select name="deelnemers" multiple size="5" style="min-height:90px">${team.map(r => `<option value="${esc(r.client_id)}" ${afspraakConcept.deelnemers.includes(r.client_id) ? "selected" : ""}>${esc(r.naam || r.client_id)} · ${esc(r.client_id)}</option>`).join("")}</select><small class="zacht">Ctrl of Cmd ingedrukt houden voor meerdere. De uitnodiging gaat naar hun postbus voornaam.achternaam@boaportaal.nl, niet naar een privéadres.</small></label>
     <label>Mailadressen, ook extern<textarea name="gasten" placeholder="naam@gemeente.nl, iemand@gmail.com">${esc(afspraakConcept.gasten)}</textarea><small class="zacht">Zij krijgen een agenda-uitnodiging. Accepteren zet de afspraak in hun agenda.</small></label>
     <button class="primair" type="submit" ${agendaBezig ? "disabled" : ""}>${agendaBezig ? "Bezig met versturen..." : "Inplannen en uitnodiging sturen"}</button>
   </form>`;
@@ -590,6 +590,7 @@ async function maakAfspraak(event) {
   const einde = f.get("einde");
   const omschrijving = String(f.get("omschrijving") || "").trim();
   const deelnemers = [...(event.target.querySelector("[name=deelnemers]")?.selectedOptions || [])].map(o => o.value);
+  if (ik.client_id && !deelnemers.includes(ik.client_id)) deelnemers.unshift(ik.client_id);
   const gasten = String(f.get("gasten") || "").trim();
   if (!titel || !start || !einde || agendaBezig) return;
   agendaBezig = true;
@@ -630,7 +631,7 @@ async function maakAfspraak(event) {
     afspraakConcept = { titel: "", start: "", einde: "", omschrijving: "", deelnemers: [], gasten: "", soort: "team" };
     agendaMelding = "";
     try {
-      const mail = await api({ actie: "agenda", id: opgeslagen.id, gasten, eigen: ik.email });
+      const mail = await api({ actie: "agenda", id: opgeslagen.id, gasten });
       if (mail.naar?.length) {
         agendaMelding = `Uitnodiging is verstuurd naar ${mail.naar.join(", ")}.`;
         opgeslagen.gasten = mail.naar;
@@ -662,7 +663,7 @@ async function stuurUitnodiging(id) {
   fout = "";
   teken();
   try {
-    const uit = await api({ actie: "agenda", id, gasten: extra, eigen: ik.email });
+    const uit = await api({ actie: "agenda", id, gasten: extra });
     agendaMelding = uit.naar?.length ? `Uitnodiging is verstuurd naar ${uit.naar.join(", ")}.` : "Geen mailadres verstuurd.";
     const rij = afspraken.find((a) => a.id === id);
     if (rij && uit.naar) rij.gasten = uit.naar;
