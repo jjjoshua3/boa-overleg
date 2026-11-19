@@ -9,6 +9,7 @@ let wazig = false;
 let raf = 0;
 let segmenter = null;
 let segmenterLaden = null;
+let beeldSpoor = null;
 
 function laadSegmenter() {
   if (segmenter) return Promise.resolve(segmenter);
@@ -68,20 +69,26 @@ export async function startGesprek(doel, { room, naam, video }) {
     bron.srcObject = new MediaStream([camera]);
     await bron.play();
   }
-  const beeld = doek.captureStream(24).getVideoTracks()[0];
   const audio = lokaal.getAudioTracks()[0];
-  uit = new MediaStream([beeld, audio].filter(Boolean));
-  zelf.srcObject = camera ? uit : lokaal;
+  uit = new MediaStream([camera, audio].filter(Boolean));
+  zelf.srcObject = camera ? new MediaStream([camera]) : lokaal;
+  beeldSpoor = null;
+
+  function canvasSpoor() {
+    if (beeldSpoor) return beeldSpoor;
+    doek.width = bron.videoWidth || 640;
+    doek.height = bron.videoHeight || 480;
+    beeldSpoor = doek.captureStream(24).getVideoTracks()[0];
+    return beeldSpoor;
+  }
 
   let klaar = true;
   function tekenScherp() {
-    const w = bron.videoWidth || 640;
-    const h = bron.videoHeight || 480;
-    if (doek.width !== w) doek.width = w;
-    if (doek.height !== h) doek.height = h;
+    const w = doek.width || 640;
+    const h = doek.height || 480;
     ctx.filter = "none";
     ctx.globalCompositeOperation = "source-over";
-    if (!camera || !camera.enabled) {
+    if (!camera || !camera.enabled || !bron.videoWidth) {
       ctx.fillStyle = "#111";
       ctx.fillRect(0, 0, w, h);
       return;
@@ -89,10 +96,8 @@ export async function startGesprek(doel, { room, naam, video }) {
     ctx.drawImage(bron, 0, 0, w, h);
   }
   function tekenWazig(results) {
-    const w = doek.width || results.image.width || 640;
-    const h = doek.height || results.image.height || 480;
-    if (doek.width !== w) doek.width = w;
-    if (doek.height !== h) doek.height = h;
+    const w = doek.width || 640;
+    const h = doek.height || 480;
     ctx.save();
     ctx.clearRect(0, 0, w, h);
     ctx.filter = "none";
@@ -131,17 +136,21 @@ export async function startGesprek(doel, { room, naam, video }) {
       videoEl.playsInline = true;
       videos.appendChild(videoEl);
     }
-    videoEl.srcObject = stream;
+    if (videoEl.srcObject !== stream) videoEl.srcObject = stream;
+    videoEl.play().catch(() => {});
   }
 
   function videoNu() {
     if (scherm) return scherm.getVideoTracks()[0];
-    return beeld;
+    if (wazig && beeldSpoor) return beeldSpoor;
+    return camera;
   }
+
+  const ijskast = new Map();
 
   function pcVoor(ander) {
     if (peers.has(ander)) return peers.get(ander);
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun.cloudflare.com:3478" }] });
     for (const track of uit.getTracks()) pc.addTrack(track, uit);
     if (scherm) {
       const schermTrack = scherm.getVideoTracks()[0];
@@ -151,9 +160,21 @@ export async function startGesprek(doel, { room, naam, video }) {
     pc.onicecandidate = (event) => {
       if (event.candidate) verstuur({ type: "ice", to: ander, candidate: event.candidate });
     };
-    pc.ontrack = (event) => beeldVan(ander, event.streams[0]);
+    pc.ontrack = (event) => {
+      const stream = event.streams?.[0]?.getTracks().length ? event.streams[0] : new MediaStream([event.track]);
+      beeldVan(ander, stream);
+    };
     peers.set(ander, pc);
     return pc;
+  }
+
+  async function spoelIjs(ander) {
+    const pc = peers.get(ander);
+    const lijst = ijskast.get(ander) || [];
+    ijskast.set(ander, []);
+    for (const candidate of lijst) {
+      try { await pc.addIceCandidate(candidate); } catch { /* te laat */ }
+    }
   }
 
   async function vervang(track) {
@@ -165,6 +186,7 @@ export async function startGesprek(doel, { room, naam, video }) {
 
   async function bied(ander) {
     const pc = pcVoor(ander);
+    if (pc.signalingState !== "stable" || pc.localDescription) return;
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     verstuur({ type: "offer", to: ander, sdp: pc.localDescription });
@@ -176,18 +198,29 @@ export async function startGesprek(doel, { room, naam, video }) {
     if (payload.to && payload.to !== ik) return;
     if (payload.type === "hello") {
       if (ik > payload.from) await bied(payload.from);
+      else if (!payload.to) verstuur({ type: "hello", to: payload.from });
       return;
     }
     const pc = pcVoor(payload.from);
     if (payload.type === "offer") {
       await pc.setRemoteDescription(payload.sdp);
+      await spoelIjs(payload.from);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       verstuur({ type: "answer", to: payload.from, sdp: pc.localDescription });
     } else if (payload.type === "answer") {
-      if (!pc.currentRemoteDescription) await pc.setRemoteDescription(payload.sdp);
+      if (!pc.currentRemoteDescription) {
+        await pc.setRemoteDescription(payload.sdp);
+        await spoelIjs(payload.from);
+      }
     } else if (payload.type === "ice" && payload.candidate) {
-      try { await pc.addIceCandidate(payload.candidate); } catch { /* te vroeg */ }
+      if (!pc.remoteDescription) {
+        const lijst = ijskast.get(payload.from) || [];
+        lijst.push(payload.candidate);
+        ijskast.set(payload.from, lijst);
+      } else {
+        try { await pc.addIceCandidate(payload.candidate); } catch { /* te laat */ }
+      }
     }
   });
   kanaal.subscribe((staat) => {
@@ -211,6 +244,8 @@ export async function startGesprek(doel, { room, naam, video }) {
     if (!camera) return;
     if (wazig) {
       wazig = false;
+      if (camera) zelf.srcObject = new MediaStream([camera]);
+      if (!scherm && camera) await vervang(camera);
       wazigKnop.textContent = "Achtergrond wazig";
       wazigKnop.classList.remove("aan");
       return;
@@ -220,6 +255,9 @@ export async function startGesprek(doel, { room, naam, video }) {
       const model = await laadSegmenter();
       model.onResults(tekenWazig);
       wazig = true;
+      const spoor = canvasSpoor();
+      zelf.srcObject = new MediaStream([spoor]);
+      if (!scherm) await vervang(spoor);
       wazigKnop.textContent = "Wazig uit";
       wazigKnop.classList.add("aan");
     } catch {
@@ -273,9 +311,11 @@ export function stopGesprek() {
   uit?.getTracks().forEach((track) => track.stop());
   lokaal?.getTracks().forEach((track) => track.stop());
   scherm?.getTracks().forEach((track) => track.stop());
+  beeldSpoor?.stop();
   uit = null;
   lokaal = null;
   scherm = null;
+  beeldSpoor = null;
   if (kanaal) {
     kanaal.unsubscribe();
     kanaal = null;
