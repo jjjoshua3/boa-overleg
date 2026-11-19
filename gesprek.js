@@ -41,7 +41,7 @@ export async function startGesprek(doel, { room, naam, video }) {
   const sb = createClient(SB_URL, SB_KEY);
   const ik = crypto.randomUUID();
   const peers = new Map();
-  doel.innerHTML = `<div class="videos"></div><div class="hostbalk"><button type="button" id="gs-mic">Microfoon uit</button><button type="button" id="gs-cam">Camera uit</button><button type="button" id="gs-wazig">Achtergrond wazig</button><button type="button" id="gs-scherm">Scherm delen</button><span class="zacht">Eigen vergadering. Geen account en geen tweede login.</span></div>`;
+  doel.innerHTML = `<div class="videos"></div><div class="hostbalk"><button type="button" id="gs-mic">Microfoon uit</button><button type="button" id="gs-cam">Camera uit</button><button type="button" id="gs-wazig">Achtergrond wazig</button><button type="button" id="gs-scherm">Scherm delen</button></div>`;
   const videos = doel.querySelector(".videos");
   const zelf = document.createElement("video");
   zelf.className = "zelf";
@@ -231,19 +231,39 @@ export async function startGesprek(doel, { room, naam, video }) {
     if (scherm) {
       scherm.getTracks().forEach((track) => track.stop());
       scherm = null;
+      toonDelen(null);
       await vervang(videoNu());
       doel.querySelector("#gs-scherm").textContent = "Scherm delen";
       return;
     }
-    try { scherm = await navigator.mediaDevices.getDisplayMedia({ video: true }); }
+    try { scherm = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }); }
     catch { return; }
     const track = scherm.getVideoTracks()[0];
     await vervang(track);
+    toonDelen(scherm);
     doel.querySelector("#gs-scherm").textContent = "Scherm stoppen";
     track.onended = () => {
       if (scherm) doel.querySelector("#gs-scherm")?.click();
     };
   };
+
+  function toonDelen(stream) {
+    videos.querySelector(".deelkader")?.remove();
+    if (!stream) return;
+    const kader = document.createElement("div");
+    kader.className = "deelkader";
+    const videoEl = document.createElement("video");
+    videoEl.className = "schermbeeld";
+    videoEl.autoplay = true;
+    videoEl.muted = true;
+    videoEl.playsInline = true;
+    videoEl.srcObject = stream;
+    const label = document.createElement("span");
+    label.textContent = "Dit deel je";
+    kader.appendChild(videoEl);
+    kader.appendChild(label);
+    videos.appendChild(kader);
+  }
 }
 
 export function stopGesprek() {
